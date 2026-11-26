@@ -26,10 +26,11 @@ const fn optional(name: &'static str, value: &'static str) -> MpvOption {
 pub const OPTIONS: &[MpvOption] = &[
     // No user configuration, no scripts, no files written.
     required("config", "no"),
-    required("load-scripts", "no"),
     required("terminal", "no"),
     required("resume-playback", "no"),
     required("save-position-on-quit", "no"),
+    // A build with no scripting at all (ours) has no such option.
+    optional("load-scripts", "no"),
     optional("osc", "no"),
     optional("load-osd-console", "no"),
     optional("load-stats-overlay", "no"),
