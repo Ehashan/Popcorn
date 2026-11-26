@@ -23,6 +23,11 @@
     "allow-set-watched",
     "allow-set-title-watched",
     "allow-reveal-file",
-    "allow-open-external"
+    "allow-open-external",
+    "allow-tmdb-search",
+    "allow-fix-match",
+    "allow-refresh-title",
+    "allow-refresh-all-metadata",
+    "allow-clear-image-cache"
   ]
 }

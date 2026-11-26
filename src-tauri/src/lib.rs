@@ -28,6 +28,9 @@ pub fn run() {
             if let Err(error) = jobs::start_watcher(app.handle()) {
                 log::warn!("not watching the media folder: {error}");
             }
+            jobs::start_metadata_workers(app.handle());
+            // Now, as well as after the scan, which fails if the folder is away.
+            jobs::queue_metadata(app.handle());
             jobs::start_scan(app.handle());
             Ok(())
         })
@@ -47,6 +50,11 @@ pub fn run() {
             commands::set_title_watched,
             commands::reveal_file,
             commands::open_external,
+            commands::tmdb_search,
+            commands::fix_match,
+            commands::refresh_title,
+            commands::refresh_all_metadata,
+            commands::clear_image_cache,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Popcorn");

@@ -9,10 +9,15 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::db::metadata;
 use crate::db::queries::{self, ContinueItem, TitleDetails, TitleSummary};
 use crate::error::{AppError, AppResult};
-use crate::state::{unix_now, AppState};
-use crate::tmdb::client::Client;
+use crate::library::group::TitleKind;
+use crate::state::{unix_now, write, AppState};
+use crate::tmdb::cache::ImageCache;
+use crate::tmdb::client::{self, Client};
+use crate::tmdb::fetch;
+use crate::tmdb::refresh::{self, Mode, Outcome};
 use crate::{jobs, library, progress, settings};
 
 #[derive(Serialize)]
@@ -70,23 +75,126 @@ pub fn finish_onboarding(state: State<'_, AppState>) -> AppResult<()> {
 
 /// An empty key removes the saved one.
 #[tauri::command(async)]
-pub fn set_tmdb_key(state: State<'_, AppState>, key: String) -> AppResult<()> {
+pub fn set_tmdb_key(app: AppHandle, state: State<'_, AppState>, key: String) -> AppResult<()> {
     let key = key.trim();
+    // Anything still waiting belongs to the old key.
+    state.metadata_queue.reset();
     if key.is_empty() {
-        settings::remove(&state.db(), settings::TMDB_KEY)
-    } else {
-        settings::set(&state.db(), settings::TMDB_KEY, key)
+        return settings::remove(&state.db(), settings::TMDB_KEY);
     }
+    {
+        let db = state.db();
+        settings::set(&db, settings::TMDB_KEY, key)?;
+        metadata::retry_unmatched(&db)?;
+    }
+    jobs::queue_metadata(&app);
+    Ok(())
 }
 
 /// Tests the given key, or the saved one when none is given.
 #[tauri::command(async)]
 pub fn test_tmdb_key(state: State<'_, AppState>, key: Option<String>) -> AppResult<()> {
-    let key = match key {
-        Some(key) if !key.trim().is_empty() => key,
-        _ => settings::get(&state.db(), settings::TMDB_KEY)?.ok_or(AppError::MissingTmdbKey)?,
+    match key {
+        Some(key) if !key.trim().is_empty() => Client::new(&key).test_key(),
+        _ => saved_client(&state)?.test_key(),
+    }
+}
+
+fn saved_client(state: &AppState) -> AppResult<Client> {
+    let key = settings::get(&state.db(), settings::TMDB_KEY)?.ok_or(AppError::MissingTmdbKey)?;
+    Ok(Client::new(&key))
+}
+
+#[derive(Serialize)]
+pub struct TmdbSearchHit {
+    tmdb_id: i64,
+    title: String,
+    year: Option<i64>,
+    poster_url: Option<String>,
+}
+
+/// For the "Fix match" dialog.
+#[tauri::command(async)]
+pub fn tmdb_search(
+    state: State<'_, AppState>,
+    kind: String,
+    query: String,
+) -> AppResult<Vec<TmdbSearchHit>> {
+    let kind = match kind.as_str() {
+        "movie" => TitleKind::Movie,
+        "show" => TitleKind::Show,
+        _ => return Err(AppError::NotFound),
     };
-    Client::new(&key).test_key()
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let results = fetch::search(&saved_client(&state)?, kind, query, None)?;
+    Ok(results
+        .into_iter()
+        .map(|result| TmdbSearchHit {
+            tmdb_id: result.tmdb_id,
+            title: result.title,
+            year: result.year,
+            poster_url: result.poster.as_deref().and_then(client::poster_url),
+        })
+        .collect())
+}
+
+/// Uses the chosen TMDB entry from now on. Nothing changes if fetching it fails.
+#[tauri::command(async)]
+pub fn fix_match(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    title_id: i64,
+    tmdb_id: i64,
+) -> AppResult<()> {
+    refetch(&app, &state, title_id, Mode::Fix(tmdb_id))
+}
+
+#[tauri::command(async)]
+pub fn refresh_title(app: AppHandle, state: State<'_, AppState>, title_id: i64) -> AppResult<()> {
+    refetch(&app, &state, title_id, Mode::Manual)
+}
+
+fn refetch(app: &AppHandle, state: &AppState, title_id: i64, mode: Mode) -> AppResult<()> {
+    match refresh::refresh(state, &saved_client(state)?, title_id, mode)? {
+        Outcome::Stored => jobs::notify_library_updated(app),
+        // The title disappeared while its new match was being fetched.
+        Outcome::Skipped if metadata::title_kind(&state.db(), title_id)?.is_none() => {
+            return Err(AppError::NotFound);
+        }
+        Outcome::Skipped | Outcome::NoMatch => {}
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn refresh_all_metadata(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+    {
+        let db = state.db();
+        if settings::get(&db, settings::TMDB_KEY)?.is_none() {
+            return Err(AppError::MissingTmdbKey);
+        }
+        metadata::mark_all_stale(&db)?;
+    }
+    jobs::queue_metadata(&app);
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn clear_image_cache(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+    // So that only the fetches already running have to be waited for.
+    state.metadata_queue.reset();
+    {
+        let _images = write(&state.image_gate);
+        // Paths go first: a failure can then only leave unused files behind.
+        metadata::forget_images(&mut state.db())?;
+        ImageCache::new(&state.data_dir).clear()?;
+    }
+    jobs::notify_library_updated(&app);
+    jobs::queue_metadata(&app);
+    Ok(())
 }
 
 #[tauri::command]

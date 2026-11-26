@@ -1,5 +1,6 @@
-//! Opening the SQLite database, plus the read queries the UI needs.
+//! Opening the SQLite database, plus the queries the app needs.
 
+pub mod metadata;
 mod migrations;
 pub mod queries;
 

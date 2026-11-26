@@ -9,12 +9,19 @@ use serde_json::Value;
 use ureq::http::Response;
 use ureq::{Agent, Body};
 
+use super::cache::{self, ImageKind};
 use crate::error::{AppError, AppResult};
 
 const API_BASE: &str = "https://api.themoviedb.org/3";
 const IMAGE_BASE: &str = "https://image.tmdb.org/t/p";
 const MAX_ATTEMPTS: u32 = 4;
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// A poster the UI can show straight from TMDB, in search results.
+pub fn poster_url(remote: &str) -> Option<String> {
+    let name = cache::file_name(remote)?;
+    Some(format!("{IMAGE_BASE}/{}/{name}", ImageKind::Poster.size()))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Auth {

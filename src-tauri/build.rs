@@ -16,6 +16,11 @@ const COMMANDS: &[&str] = &[
     "set_title_watched",
     "reveal_file",
     "open_external",
+    "tmdb_search",
+    "fix_match",
+    "refresh_title",
+    "refresh_all_metadata",
+    "clear_image_cache",
 ];
 
 fn main() {
