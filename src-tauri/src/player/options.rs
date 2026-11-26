@@ -39,10 +39,16 @@ pub const OPTIONS: &[MpvOption] = &[
     optional("ytdl", "no"),
     required("access-references", "no"),
     required("demuxer-lavf-o", "protocol_whitelist=[file]"),
-    // Video is drawn through the render API into our own view.
+    // Video is drawn through the render API on macOS, or via `wid` on Windows.
+    #[cfg(target_os = "macos")]
     required("vo", "libmpv"),
-    // Direct VideoToolbox decoding, then copy-back, then software.
+    #[cfg(target_os = "windows")]
+    required("vo", "gpu"),
+    // Hardware decoding per platform, with software fallback.
+    #[cfg(target_os = "macos")]
     required("hwdec", "videotoolbox,videotoolbox-copy,no"),
+    #[cfg(target_os = "windows")]
+    required("hwdec", "auto-safe,no"),
     required("sub-auto", "fuzzy"),
     required("keep-open", "yes"),
     required("idle", "yes"),

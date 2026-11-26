@@ -145,6 +145,7 @@ api! {
     mpv_render_context_free: fn(*mut RenderHandle);
 }
 
+#[cfg(not(target_os = "windows"))]
 extern "C" {
     fn dlopen(path: *const c_char, mode: c_int) -> *mut c_void;
     pub fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
@@ -152,14 +153,39 @@ extern "C" {
     fn setlocale(category: c_int, locale: *const c_char) -> *const c_char;
 }
 
+#[cfg(not(target_os = "windows"))]
 pub const RTLD_NOW: c_int = 0x2;
+#[cfg(not(target_os = "windows"))]
 pub const RTLD_LOCAL: c_int = 0x4;
 /// macOS value of `LC_NUMERIC`.
+#[cfg(not(target_os = "windows"))]
 const LC_NUMERIC: c_int = 4;
 
+#[cfg(not(target_os = "windows"))]
 const LIBRARY_NAME: &str = "libmpv.2.dylib";
 
+#[cfg(target_os = "windows")]
+extern "C" {
+    fn setlocale(category: c_int, locale: *const c_char) -> *const c_char;
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "kernel32")]
+extern "system" {
+    fn LoadLibraryW(lpLibFileName: *const u16) -> *mut c_void;
+    fn GetProcAddress(hModule: *mut c_void, lpProcName: *const c_char) -> *mut c_void;
+    fn GetLastError() -> u32;
+}
+
+/// Windows MSVC value of `LC_NUMERIC`.
+#[cfg(target_os = "windows")]
+const LC_NUMERIC: c_int = 2;
+
+#[cfg(target_os = "windows")]
+const LIBRARY_NAMES: &[&str] = &["libmpv-2.dll", "mpv-2.dll"];
+
 /// Opens a dynamic library, which then stays loaded for the life of the app.
+#[cfg(not(target_os = "windows"))]
 pub fn open_library(path: &CStr) -> Result<*mut c_void, String> {
     // SAFETY: the path is NUL-terminated. Loading runs the library's
     // initializers, so callers only pass trusted paths.
@@ -179,8 +205,29 @@ pub fn open_library(path: &CStr) -> Result<*mut c_void, String> {
     }
 }
 
+/// Opens a Windows DLL, which then stays loaded for the life of the app.
+#[cfg(target_os = "windows")]
+fn open_library_win(path: &std::path::Path) -> Result<*mut c_void, String> {
+    use std::os::windows::ffi::OsStrExt;
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: `wide` is NUL-terminated UTF-16.
+    let library = unsafe { LoadLibraryW(wide.as_ptr()) };
+    if !library.is_null() {
+        Ok(library)
+    } else {
+        // SAFETY: no preconditions.
+        let code = unsafe { GetLastError() };
+        Err(format!("LoadLibraryW failed with error {code}"))
+    }
+}
+
 /// # Safety
 /// `library` must be a live dlopen handle and `name` must end in a NUL.
+#[cfg(not(target_os = "windows"))]
 unsafe fn symbol(library: *mut c_void, name: &str) -> Result<*mut c_void, String> {
     let found = dlsym(library, name.as_ptr().cast());
     if found.is_null() {
@@ -190,8 +237,21 @@ unsafe fn symbol(library: *mut c_void, name: &str) -> Result<*mut c_void, String
     }
 }
 
+/// # Safety
+/// `library` must be a live HMODULE and `name` must end in a NUL.
+#[cfg(target_os = "windows")]
+unsafe fn symbol(library: *mut c_void, name: &str) -> Result<*mut c_void, String> {
+    let found = GetProcAddress(library, name.as_ptr().cast());
+    if found.is_null() {
+        Err(format!("libmpv is missing {}", name.trim_end_matches('\0')))
+    } else {
+        Ok(found)
+    }
+}
+
 /// Where libmpv may be loaded from, in order. Release builds only ever look
 /// inside the app bundle (`Contents/MacOS/popcorn` -> `Contents/Frameworks`).
+#[cfg(not(target_os = "windows"))]
 fn candidates() -> Vec<PathBuf> {
     let bundled = std::env::current_exe().ok().and_then(|exe| {
         Some(
@@ -216,6 +276,31 @@ fn candidates() -> Vec<PathBuf> {
     }
 }
 
+/// Where libmpv may be loaded from on Windows, in order.
+#[cfg(target_os = "windows")]
+fn candidates() -> Vec<PathBuf> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(PathBuf::from));
+    let bundled: Vec<PathBuf> = exe_dir
+        .into_iter()
+        .flat_map(|dir| LIBRARY_NAMES.iter().map(move |name| dir.join(name)))
+        .collect();
+    #[cfg(not(debug_assertions))]
+    {
+        bundled
+    }
+    #[cfg(debug_assertions)]
+    {
+        std::env::var_os("POPCORN_LIBMPV")
+            .map(PathBuf::from)
+            .into_iter()
+            .chain(bundled)
+            .collect()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
 fn load() -> Result<Api, String> {
     let mut problem = format!("{LIBRARY_NAME} was not found");
     for path in candidates() {
@@ -236,6 +321,29 @@ fn load() -> Result<Api, String> {
             }
             Err(error) => {
                 // Said aloud so that a debug build never falls back quietly.
+                log::warn!("could not load {}: {error}", path.display());
+                problem = error;
+            }
+        }
+    }
+    Err(problem)
+}
+
+#[cfg(target_os = "windows")]
+fn load() -> Result<Api, String> {
+    let mut problem = format!("{} was not found", LIBRARY_NAMES.join(" or "));
+    for path in candidates() {
+        if !path.is_file() {
+            continue;
+        }
+        match open_library_win(&path) {
+            Ok(library) => {
+                // SAFETY: `library` was just opened and is never closed.
+                let api = unsafe { Api::resolve(library) }?;
+                log::info!("loaded {}", path.display());
+                return Ok(api);
+            }
+            Err(error) => {
                 log::warn!("could not load {}: {error}", path.display());
                 problem = error;
             }

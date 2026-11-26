@@ -18,6 +18,7 @@ pub const CONTROL: usize = 1 << 18;
 pub const OPTION: usize = 1 << 19;
 pub const COMMAND: usize = 1 << 20;
 
+#[cfg(not(target_os = "windows"))]
 fn special_name(key_code: u16) -> Option<&'static str> {
     Some(match key_code {
         36 => "ENTER",
@@ -34,6 +35,28 @@ fn special_name(key_code: u16) -> Option<&'static str> {
         124 => "RIGHT",
         125 => "DOWN",
         126 => "UP",
+        _ => return None,
+    })
+}
+
+/// Win32 `VK_*` virtual-key codes.
+#[cfg(target_os = "windows")]
+fn special_name(key_code: u16) -> Option<&'static str> {
+    Some(match key_code {
+        0x0D => "ENTER",
+        0x09 => "TAB",
+        0x20 => "SPACE",
+        0x08 => "BS",
+        0x1B => "ESC",
+        0x24 => "HOME",
+        0x21 => "PGUP",
+        0x2E => "DEL",
+        0x23 => "END",
+        0x22 => "PGDWN",
+        0x25 => "LEFT",
+        0x27 => "RIGHT",
+        0x28 => "DOWN",
+        0x26 => "UP",
         _ => return None,
     })
 }

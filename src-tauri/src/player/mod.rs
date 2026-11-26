@@ -8,7 +8,10 @@ pub mod commands;
 #[cfg(target_os = "macos")]
 #[path = "embed_macos.rs"]
 mod embed;
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+#[path = "embed_windows.rs"]
+mod embed;
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[path = "embed_unsupported.rs"]
 mod embed;
 mod ffi;
