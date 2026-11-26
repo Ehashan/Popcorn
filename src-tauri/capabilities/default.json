@@ -23,6 +23,17 @@
     "allow-set-watched",
     "allow-set-title-watched",
     "allow-reveal-file",
-    "allow-open-external"
+    "allow-open-external",
+    "allow-player-open",
+    "allow-player-close",
+    "allow-player-toggle-pause",
+    "allow-player-seek",
+    "allow-player-set-volume",
+    "allow-player-toggle-mute",
+    "allow-player-set-audio",
+    "allow-player-set-subtitle",
+    "allow-player-add-subtitle",
+    "allow-player-toggle-fullscreen",
+    "allow-player-exit-fullscreen"
   ]
 }
