@@ -130,11 +130,19 @@ mod tests {
     #[cfg(target_os = "windows")]
     const ESC_KEY: u16 = 0x1B;
 
+    #[cfg(not(target_os = "windows"))]
+    const M_KEY: u16 = 46;
+    #[cfg(target_os = "windows")]
+    const M_KEY: u16 = 0x4D;
+
     #[test]
     fn special_and_printable_keys() {
         assert_eq!(key_action(SPACE_KEY, " ", 0), forward("SPACE"));
-        assert_eq!(key_action(LEFT_KEY, "\u{f702}", SHIFT), forward("Shift+LEFT"));
-        assert_eq!(key_action(46, "m", 0), forward("m"));
+        assert_eq!(
+            key_action(LEFT_KEY, "\u{f702}", SHIFT),
+            forward("Shift+LEFT")
+        );
+        assert_eq!(key_action(M_KEY, "m", 0), forward("m"));
         assert_eq!(key_action(20, "#", SHIFT), forward("SHARP"));
         assert_eq!(key_action(122, "\u{f704}", 0), KeyAction::Ignore);
     }
