@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' asset: http://asset.localhost https://image.tmdb.org; connect-src ipc: http://ipc.localhost",
       "assetProtocol": {
         "enable": true,
         "scope": ["$DATA/Popcorn/images/**"]

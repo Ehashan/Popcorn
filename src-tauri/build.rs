@@ -1,6 +1,22 @@
 /// Every app command must be listed here so that it gets its own permission,
 /// which `capabilities/default.json` then has to grant explicitly.
-const COMMANDS: &[&str] = &["app_info"];
+const COMMANDS: &[&str] = &[
+    "app_info",
+    "get_settings",
+    "pick_media_folder",
+    "finish_onboarding",
+    "set_tmdb_key",
+    "test_tmdb_key",
+    "rescan",
+    "list_titles",
+    "get_title",
+    "continue_watching",
+    "search_library",
+    "set_watched",
+    "set_title_watched",
+    "reveal_file",
+    "open_external",
+];
 
 fn main() {
     let manifest = tauri_build::AppManifest::new().commands(COMMANDS);

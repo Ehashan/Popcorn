@@ -2,11 +2,27 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "The minimum the main window needs",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
-    "allow-app-info"
+    "allow-app-info",
+    "allow-get-settings",
+    "allow-pick-media-folder",
+    "allow-finish-onboarding",
+    "allow-set-tmdb-key",
+    "allow-test-tmdb-key",
+    "allow-rescan",
+    "allow-list-titles",
+    "allow-get-title",
+    "allow-continue-watching",
+    "allow-search-library",
+    "allow-set-watched",
+    "allow-set-title-watched",
+    "allow-reveal-file",
+    "allow-open-external"
   ]
 }
