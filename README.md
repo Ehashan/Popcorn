@@ -35,6 +35,12 @@ brew install meson ninja pkgconf   # build tools only
 scripts/build-libmpv.sh
 ```
 
+In development, point the app at that library (otherwise a Homebrew `mpv`, if installed, is used):
+
+```sh
+POPCORN_LIBMPV="$PWD/build/prefix/lib/libmpv.2.dylib" cargo tauri dev
+```
+
 To make `Popcorn.app` and the DMG with libmpv bundled inside (fails if the app is over 50 MB):
 
 ```sh

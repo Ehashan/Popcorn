@@ -10,7 +10,7 @@ use tauri_plugin_dialog::DialogExt;
 use super::{Opened, Player, PlayerHost};
 use crate::error::{AppError, AppResult};
 
-const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "ass", "ssa", "vtt", "sub"];
+const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "ass", "ssa", "vtt"];
 
 #[tauri::command(async)]
 pub fn player_open(
