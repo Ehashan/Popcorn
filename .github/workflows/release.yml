@@ -124,7 +124,7 @@ jobs:
     timeout-minutes: 60
     env:
       TAURI_CLI_VERSION: "2.12.6"
-      MPV_WINBUILD_TAG: "20250427"
+      MPV_WINBUILD_TAG: "20261111"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -145,12 +145,16 @@ jobs:
       - name: Download libmpv-2.dll
         if: steps.cache-libmpv.outputs.cache-hit != 'true'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build/windows | Out-Null
-          $url = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/${{ env.MPV_WINBUILD_TAG }}/mpv-dev-x86_64-${{ env.MPV_WINBUILD_TAG }}-git-*.7z"
-          gh release download "${{ env.MPV_WINBUILD_TAG }}" -R shinchiro/mpv-winbuild-cmake -p "mpv-dev-x86_64-*.7z" -D build/windows
+          gh release download "${{ env.MPV_WINBUILD_TAG }}" -R shinchiro/mpv-winbuild-cmake -p "mpv-dev-x86_64-${{ env.MPV_WINBUILD_TAG }}-*.7z" -D build/windows
           $archive = Get-ChildItem build/windows/mpv-dev-x86_64-*.7z | Select-Object -First 1
+          if (-not $archive) { throw "No mpv-dev archive downloaded" }
           7z e $archive.FullName "libmpv-2.dll" -o"build/windows" -y
+          if (-not (Test-Path "build/windows/libmpv-2.dll")) { throw "libmpv-2.dll not found in archive" }
           Remove-Item $archive.FullName
 
       - name: Cache tauri-cli

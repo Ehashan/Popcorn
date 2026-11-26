@@ -117,8 +117,7 @@ struct Msg {
     pt_y: i32,
 }
 
-type SubclassProc =
-    unsafe extern "system" fn(Hwnd, u32, Wparam, Lparam, usize, usize) -> Lresult;
+type SubclassProc = unsafe extern "system" fn(Hwnd, u32, Wparam, Lparam, usize, usize) -> Lresult;
 
 #[link(name = "kernel32")]
 extern "system" {
@@ -139,11 +138,7 @@ extern "system" {
         uIdSubclass: usize,
         dwRefData: usize,
     ) -> c_int;
-    fn RemoveWindowSubclass(
-        hWnd: Hwnd,
-        pfnSubclass: SubclassProc,
-        uIdSubclass: usize,
-    ) -> c_int;
+    fn RemoveWindowSubclass(hWnd: Hwnd, pfnSubclass: SubclassProc, uIdSubclass: usize) -> c_int;
     fn DefSubclassProc(hWnd: Hwnd, uMsg: u32, wParam: Wparam, lParam: Lparam) -> Lresult;
 }
 
@@ -451,8 +446,11 @@ impl VideoSurface {
                     null_mut(),
                 );
                 if child == 0 {
-                    let _ = window.set_background_color(Some(tauri::window::Color(0x10, 0x10, 0x11, 0xff)));
-                    return Err(AppError::Player("could not create embedded video surface".into()));
+                    let _ = window
+                        .set_background_color(Some(tauri::window::Color(0x10, 0x10, 0x11, 0xff)));
+                    return Err(AppError::Player(
+                        "could not create embedded video surface".into(),
+                    ));
                 }
                 SetWindowPos(
                     child,
@@ -463,7 +461,12 @@ impl VideoSurface {
                     rect.bottom - rect.top,
                     SWP_NOACTIVATE,
                 );
-                SetWindowSubclass(parent_hwnd, parent_subclass_proc, SUBCLASS_ID, child as usize);
+                SetWindowSubclass(
+                    parent_hwnd,
+                    parent_subclass_proc,
+                    SUBCLASS_ID,
+                    child as usize,
+                );
                 child
             };
 
