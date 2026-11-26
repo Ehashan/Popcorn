@@ -397,6 +397,27 @@ impl VideoSurface {
         Ok(!windowed)
     }
 
+    /// Keeps an embedded video sharp when the main window moves to a screen
+    /// with another pixel density.
+    pub fn set_scale(&self, app: &AppHandle, scale: f64) {
+        if !self.is_embedded() {
+            return;
+        }
+        let layer = self.parts.layer;
+        let changed = on_main(app, move || {
+            if lock(layers()).contains_key(&layer) {
+                // SAFETY: on the main thread, and a registered layer is live.
+                unsafe {
+                    msg!(layer as Id, c"setContentsScale:", (); scale => f64);
+                    msg!(layer as Id, c"setNeedsDisplay", ());
+                }
+            }
+        });
+        if let Err(error) = changed {
+            log::warn!("could not rescale the video: {error}");
+        }
+    }
+
     pub fn is_window_fullscreen(&self) -> bool {
         !self.windowed.load(Ordering::SeqCst)
     }

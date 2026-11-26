@@ -29,6 +29,8 @@ impl VideoSurface {
         false
     }
 
+    pub fn set_scale(&self, _: &AppHandle, _: f64) {}
+
     pub fn is_window_fullscreen(&self) -> bool {
         false
     }

@@ -293,11 +293,21 @@ fn fallback_keys(app: AppHandle, session: std::sync::Weak<Session>) -> embed::Ke
     })
 }
 
-/// Saves progress when the main window is closed.
+/// Saves progress when the main window is closed, and follows its scale.
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
-    if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
-        let app = window.app_handle();
-        app.state::<PlayerHost>().shutdown(app);
+    if window.label() != "main" {
+        return;
+    }
+    let app = window.app_handle();
+    match event {
+        WindowEvent::CloseRequested { .. } => app.state::<PlayerHost>().shutdown(app),
+        WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+            let session = app.state::<PlayerHost>().session();
+            if let Some(surface) = session.and_then(|session| session.surface()) {
+                surface.set_scale(app, *scale_factor);
+            }
+        }
+        _ => {}
     }
 }
 
