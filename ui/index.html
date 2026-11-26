@@ -2,12 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Popcorn</title>
     <link rel="stylesheet" href="css/app.css" />
   </head>
   <body>
-    <div class="titlebar" data-tauri-drag-region></div>
-    <main id="app"></main>
+    <!-- Tauri only drags from the element carrying the attribute itself, so the
+         buttons inside stay clickable. -->
+    <header id="topbar" class="topbar minimal" data-tauri-drag-region>
+      <button type="button" class="icon-btn" id="back" aria-label="Back" title="Back (Esc)"></button>
+      <span class="brand">Popcorn</span>
+      <nav class="tabs" aria-label="Main" data-tauri-drag-region>
+        <button type="button" class="tab" data-route="home">Home</button>
+        <button type="button" class="tab" data-route="movies">Movies</button>
+        <button type="button" class="tab" data-route="shows">TV Shows</button>
+      </nav>
+      <span class="spacer" data-tauri-drag-region></span>
+      <nav class="tabs" aria-label="Tools" data-tauri-drag-region>
+        <button type="button" class="tab" data-route="search" data-icon="search">Search</button>
+        <button type="button" class="tab" data-route="settings" data-icon="settings">
+          Settings
+        </button>
+      </nav>
+    </header>
+    <main id="app" tabindex="-1"></main>
     <script type="module" src="js/main.js"></script>
   </body>
 </html>
