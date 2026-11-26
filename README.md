@@ -27,6 +27,24 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+Video playback needs a slim libmpv, built from pinned and checksummed sources into `build/`
+(no Homebrew libraries are used or linked; the first build takes a few minutes):
+
+```sh
+brew install meson ninja pkgconf   # build tools only
+scripts/build-libmpv.sh
+```
+
+To make `Popcorn.app` and the DMG with libmpv bundled inside (fails if the app is over 50 MB):
+
+```sh
+scripts/package.sh
+```
+
+The results are in `src-tauri/target/aarch64-apple-darwin/release/bundle/`. Use this script
+rather than `cargo tauri build` alone, which does not bundle libmpv. Bundled components and
+their licenses are listed in [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).
+
 ## Getting a TMDB API key
 
 1. Create a free account at <https://www.themoviedb.org>.

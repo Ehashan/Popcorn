@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Manual runs build and upload the DMG as a workflow artifact, without releasing.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build DMG (arm64)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      TAURI_CLI_VERSION: "2.12.6"
+      # Only booleans at job level: secret values stay in the steps that use them.
+      HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check runner architecture
+        run: test "$(uname -m)" = arm64
+
+      - name: Install build tools
+        run: |
+          for tool in meson ninja pkgconf; do
+            command -v "$tool" >/dev/null || brew install "$tool"
+          done
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin
+          rustup default stable
+
+      - name: Cache libmpv
+        uses: actions/cache@v6
+        with:
+          path: build/prefix
+          # The script pins every version, so its hash identifies the result.
+          key: libmpv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-libmpv.sh') }}
+
+      - name: Build libmpv
+        run: scripts/build-libmpv.sh
+
+      - name: Cache tauri-cli
+        id: tauri-cli
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.TAURI_CLI_VERSION }}
+
+      - name: Install tauri-cli
+        if: steps.tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "=$TAURI_CLI_VERSION" --locked
+
+      - name: Format, lint, test
+        working-directory: src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+
+      - name: Import signing certificate
+        if: env.HAS_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          certificate="$RUNNER_TEMP/certificate.p12"
+          keychain_password="$(openssl rand -base64 24)"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode >"$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$certificate"
+
+      - name: Package
+        env:
+          # "-" means ad-hoc signing.
+          CODESIGN_IDENTITY: ${{ env.HAS_CERT == 'true' && secrets.APPLE_SIGNING_IDENTITY || '-' }}
+        run: scripts/package.sh
+
+      - name: Notarize
+        if: env.HAS_CERT == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          dmg="$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg)"
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait --timeout 30m
+          xcrun stapler staple "$dmg"
+
+      - name: Remove signing keychain
+        if: always() && env.HAS_CERT == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Popcorn-dmg
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Attach DMG to release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    # Only this job can write, and it runs no code from the repository or its dependencies.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: Popcorn-dmg
+          path: dist
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.dmg --clobber
+          else
+            source_note="Source and licenses of bundled components: https://github.com/$GH_REPO/blob/$TAG/docs/THIRD_PARTY.md"
+            gh release create "$TAG" dist/*.dmg --verify-tag --title "Popcorn $TAG" \
+              --notes "$source_note" --generate-notes
+          fi
