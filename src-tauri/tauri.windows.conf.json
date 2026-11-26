@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "targets": ["nsis", "msi"],
+    "resources": {
+      "../build/windows/libmpv-2.dll": "libmpv-2.dll"
+    }
+  }
+}
