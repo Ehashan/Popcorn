@@ -102,7 +102,10 @@ impl Player for Mpv {
     }
 
     fn add_subtitle(&self, path: &str) -> AppResult<()> {
-        self.command(&["sub-add", path, "select"])
+        self.command(&["sub-add", path, "select"]).map_err(|error| {
+            log::warn!("could not load a subtitle file: {error}");
+            AppError::Player("that subtitle file could not be loaded".into())
+        })
     }
 }
 

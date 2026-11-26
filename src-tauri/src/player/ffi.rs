@@ -234,7 +234,11 @@ fn load() -> Result<Api, String> {
                 log::info!("loaded {}", path.display());
                 return Ok(api);
             }
-            Err(error) => problem = error,
+            Err(error) => {
+                // Said aloud so that a debug build never falls back quietly.
+                log::warn!("could not load {}: {error}", path.display());
+                problem = error;
+            }
         }
     }
     Err(problem)
