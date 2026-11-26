@@ -22,9 +22,12 @@ tauri-plugin-dialog = "2"
 rusqlite = { version = "0.43", features = ["bundled"] }
 walkdir = "2"
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
-notify-debouncer-full = { version = "0.8", default-features = false, features = ["macos_fsevent"] }
+notify-debouncer-full = "0.8"
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
 log = { version = "0.4", features = ["std"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+notify-debouncer-full = { version = "0.8", default-features = false, features = ["macos_fsevent"] }
 
 [profile.release]
 opt-level = "s"

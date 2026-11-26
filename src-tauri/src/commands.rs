@@ -262,7 +262,11 @@ pub fn set_title_watched(
 pub fn reveal_file(state: State<'_, AppState>, file_id: i64) -> AppResult<()> {
     let path = queries::file_path(&state.db(), file_id)?;
     #[cfg(target_os = "macos")]
-    Command::new("/usr/bin/open").arg("-R").arg(path).status()?;
+    Command::new("/usr/bin/open").arg("-R").arg(&path).status()?;
+    #[cfg(target_os = "windows")]
+    Command::new("explorer")
+        .arg(format!("/select,{}", path))
+        .status()?;
     Ok(())
 }
 
@@ -277,5 +281,7 @@ pub fn open_external(target: String) -> AppResult<()> {
     };
     #[cfg(target_os = "macos")]
     Command::new("/usr/bin/open").arg(url).status()?;
+    #[cfg(target_os = "windows")]
+    Command::new("cmd").args(["/C", "start", "", url]).status()?;
     Ok(())
 }
