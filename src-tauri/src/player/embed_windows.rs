@@ -1,14 +1,16 @@
 //! Where the video appears on Windows:
-//! * a borderless `WS_POPUP` player window on its own message-loop thread
-//!   (WebView2 on Windows does not composite transparently over sibling child HWNDs).
+//! * embedded: a borderless `WS_POPUP` surface kept directly behind the transparent
+//!   WebView2 main window so HTML player controls render on top of the video;
+//! * fallback: a standalone borderless `WS_POPUP` window on its own message-loop thread.
 
 use std::ffi::{c_int, c_uint, c_void};
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use super::keys;
 use super::mpv::Mpv;
@@ -25,9 +27,13 @@ type Wparam = usize;
 type Lparam = isize;
 type Lresult = isize;
 
+const MAIN_THREAD_TIMEOUT: Duration = Duration::from_secs(5);
+
 const WS_POPUP: u32 = 0x8000_0000;
 const WS_VISIBLE: u32 = 0x1000_0000;
 const WS_CLIPCHILDREN: u32 = 0x0200_0000;
+const WS_EX_TOOLWINDOW: u32 = 0x0000_0080;
+const WS_EX_NOACTIVATE: u32 = 0x0800_0000;
 
 const CS_DBLCLKS: u32 = 0x0008;
 const CS_HREDRAW: u32 = 0x0002;
@@ -36,6 +42,7 @@ const CS_VREDRAW: u32 = 0x0001;
 const WM_DESTROY: u32 = 0x0002;
 const WM_CLOSE: u32 = 0x0010;
 const WM_QUIT: u32 = 0x0012;
+const WM_WINDOWPOSCHANGED: u32 = 0x0047;
 const WM_NCDESTROY: u32 = 0x0082;
 const WM_NCLBUTTONDOWN: u32 = 0x00A1;
 const WM_KEYDOWN: u32 = 0x0100;
@@ -47,6 +54,8 @@ const GWLP_USERDATA: c_int = -21;
 const SWP_NOZORDER: u32 = 0x0004;
 const SWP_NOACTIVATE: u32 = 0x0010;
 const SWP_FRAMECHANGED: u32 = 0x0020;
+const SW_HIDE: c_int = 0;
+const SW_SHOWNA: c_int = 8;
 const MONITOR_DEFAULTTONEAREST: u32 = 0x0002;
 const HTCAPTION: isize = 2;
 
@@ -62,6 +71,15 @@ const VK_RWIN: c_int = 0x5C;
 const ES_SYSTEM_REQUIRED: u32 = 0x0000_0001;
 const ES_DISPLAY_REQUIRED: u32 = 0x0000_0002;
 const ES_CONTINUOUS: u32 = 0x8000_0000;
+
+const SUBCLASS_ID: usize = 0x504F_5043; // "POPC"
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct Point {
+    x: i32,
+    y: i32,
+}
 
 #[repr(C)]
 struct WndClassExW {
@@ -107,6 +125,8 @@ struct Msg {
     pt_y: i32,
 }
 
+type SubclassProc = unsafe extern "system" fn(Hwnd, u32, Wparam, Lparam, usize, usize) -> Lresult;
+
 #[link(name = "kernel32")]
 extern "system" {
     fn GetModuleHandleW(lpModuleName: *const u16) -> Hinstance;
@@ -116,6 +136,18 @@ extern "system" {
 #[link(name = "gdi32")]
 extern "system" {
     fn GetStockObject(i: c_int) -> isize;
+}
+
+#[link(name = "comctl32")]
+extern "system" {
+    fn SetWindowSubclass(
+        hWnd: Hwnd,
+        pfnSubclass: SubclassProc,
+        uIdSubclass: usize,
+        dwRefData: usize,
+    ) -> c_int;
+    fn RemoveWindowSubclass(hWnd: Hwnd, pfnSubclass: SubclassProc, uIdSubclass: usize) -> c_int;
+    fn DefSubclassProc(hWnd: Hwnd, uMsg: u32, wParam: Wparam, lParam: Lparam) -> Lresult;
 }
 
 #[link(name = "user32")]
@@ -155,6 +187,10 @@ extern "system" {
         uFlags: u32,
     ) -> c_int;
     fn GetWindowRect(hWnd: Hwnd, lpRect: *mut Rect) -> c_int;
+    fn GetClientRect(hWnd: Hwnd, lpRect: *mut Rect) -> c_int;
+    fn ClientToScreen(hWnd: Hwnd, lpPoint: *mut Point) -> c_int;
+    fn IsIconic(hWnd: Hwnd) -> c_int;
+    fn ShowWindow(hWnd: Hwnd, nCmdShow: c_int) -> c_int;
     fn MonitorFromWindow(hwnd: Hwnd, dwFlags: u32) -> Hmonitor;
     fn GetMonitorInfoW(hMonitor: Hmonitor, lpmi: *mut MonitorInfo) -> c_int;
     fn GetKeyState(nVirtKey: c_int) -> i16;
@@ -179,6 +215,49 @@ struct WindowData {
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn on_main<T: Send + 'static>(
+    app: &AppHandle,
+    run: impl FnOnce() -> T + Send + 'static,
+) -> AppResult<T> {
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(run());
+    })?;
+    rx.recv_timeout(MAIN_THREAD_TIMEOUT)
+        .map_err(|_| AppError::Player("the window did not respond".into()))
+}
+
+unsafe fn client_screen_rect(hwnd: Hwnd) -> Option<(i32, i32, i32, i32)> {
+    let mut rect = Rect::default();
+    if GetClientRect(hwnd, &mut rect) == 0 {
+        return None;
+    }
+    let mut top_left = Point {
+        x: rect.left,
+        y: rect.top,
+    };
+    if ClientToScreen(hwnd, &mut top_left) == 0 {
+        return None;
+    }
+    Some((
+        top_left.x,
+        top_left.y,
+        (rect.right - rect.left).max(1),
+        (rect.bottom - rect.top).max(1),
+    ))
+}
+
+unsafe fn sync_embedded_surface(main_hwnd: Hwnd, video_hwnd: Hwnd) {
+    if IsIconic(main_hwnd) != 0 {
+        ShowWindow(video_hwnd, SW_HIDE);
+        return;
+    }
+    if let Some((x, y, w, h)) = client_screen_rect(main_hwnd) {
+        ShowWindow(video_hwnd, SW_SHOWNA);
+        SetWindowPos(video_hwnd, main_hwnd, x, y, w, h, SWP_NOACTIVATE);
+    }
 }
 
 fn modifier_flags() -> usize {
@@ -282,6 +361,36 @@ fn set_fullscreen_hwnd(hwnd: Hwnd, data: &WindowData, fullscreen: bool) {
     }
 }
 
+unsafe extern "system" fn embed_subclass_proc(
+    hwnd: Hwnd,
+    msg: u32,
+    w_param: Wparam,
+    l_param: Lparam,
+    _uid: usize,
+    video_hwnd: usize,
+) -> Lresult {
+    let result = DefSubclassProc(hwnd, msg, w_param, l_param);
+    if msg == WM_WINDOWPOSCHANGED {
+        sync_embedded_surface(hwnd, video_hwnd as Hwnd);
+    }
+    result
+}
+
+unsafe extern "system" fn embed_wnd_proc(
+    hwnd: Hwnd,
+    msg: u32,
+    w_param: Wparam,
+    l_param: Lparam,
+) -> Lresult {
+    match msg {
+        WM_DESTROY => {
+            PostQuitMessage(0);
+            0
+        }
+        _ => DefWindowProcW(hwnd, msg, w_param, l_param),
+    }
+}
+
 unsafe extern "system" fn wnd_proc(
     hwnd: Hwnd,
     msg: u32,
@@ -330,6 +439,11 @@ unsafe extern "system" fn wnd_proc(
 
 #[derive(Clone)]
 enum SurfaceKind {
+    Embedded {
+        main_hwnd: Hwnd,
+        video_hwnd: Hwnd,
+        thread: Arc<Mutex<Option<JoinHandle<()>>>>,
+    },
     Window {
         hwnd: Hwnd,
         thread: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -343,10 +457,124 @@ pub struct VideoSurface {
 }
 
 impl VideoSurface {
-    pub fn embed(_app: &AppHandle, _mpv: &Arc<Mpv>) -> AppResult<Self> {
-        Err(AppError::Player(
-            "embedded WebView2 video is not supported on Windows".into(),
-        ))
+    pub fn embed(app: &AppHandle, mpv: &Arc<Mpv>) -> AppResult<Self> {
+        let app_clone = app.clone();
+        let (main_hwnd, x, y, w, h) = on_main(app, move || -> AppResult<(Hwnd, i32, i32, i32, i32)> {
+            let window = app_clone
+                .get_webview_window("main")
+                .ok_or_else(|| AppError::Player("main window not found".into()))?;
+            let main_hwnd = window
+                .hwnd()
+                .map_err(|e| AppError::Player(format!("could not get window handle: {e}")))?
+                .0 as Hwnd;
+
+            // Make WebView2's background transparent so the video window behind it shows through.
+            let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+
+            // SAFETY: querying client rect of `main_hwnd` on the main thread.
+            let (x, y, w, h) = unsafe { client_screen_rect(main_hwnd) }
+                .ok_or_else(|| AppError::Player("could not read main window bounds".into()))?;
+            Ok((main_hwnd, x, y, w, h))
+        })??;
+
+        let (tx, rx) = mpsc::channel::<AppResult<Hwnd>>();
+        let handle = thread::Builder::new()
+            .name("popcorn-win-embed".into())
+            .spawn(move || {
+                let class_name = wide("PopcornVideoSurface");
+                let title = wide("PopcornVideo");
+                // SAFETY: registering and creating a borderless video surface on this thread.
+                let video_hwnd = unsafe {
+                    let h_instance = GetModuleHandleW(null());
+                    let wc = WndClassExW {
+                        cb_size: std::mem::size_of::<WndClassExW>() as u32,
+                        style: CS_HREDRAW | CS_VREDRAW,
+                        lpfn_wnd_proc: embed_wnd_proc,
+                        cb_cls_extra: 0,
+                        cb_wnd_extra: 0,
+                        h_instance,
+                        h_icon: 0,
+                        h_cursor: LoadCursorW(0, IDC_ARROW as *const u16),
+                        h_br_background: GetStockObject(BLACK_BRUSH),
+                        lpsz_menu_name: null(),
+                        lpsz_class_name: class_name.as_ptr(),
+                        h_icon_sm: 0,
+                    };
+                    RegisterClassExW(&wc);
+
+                    let hwnd = CreateWindowExW(
+                        WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                        class_name.as_ptr(),
+                        title.as_ptr(),
+                        WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN,
+                        x,
+                        y,
+                        w,
+                        h,
+                        0,
+                        0,
+                        h_instance,
+                        null_mut(),
+                    );
+                    if hwnd == 0 {
+                        let _ = tx.send(Err(AppError::Player(
+                            "could not create embedded video surface".into(),
+                        )));
+                        return;
+                    }
+                    hwnd
+                };
+
+                let _ = tx.send(Ok(video_hwnd));
+
+                let mut msg = Msg {
+                    hwnd: 0,
+                    message: 0,
+                    w_param: 0,
+                    l_param: 0,
+                    time: 0,
+                    pt_x: 0,
+                    pt_y: 0,
+                };
+                // SAFETY: standard Win32 message loop for `video_hwnd` on this thread.
+                unsafe {
+                    while GetMessageW(&mut msg, 0, 0, 0) > 0 {
+                        if msg.message == WM_QUIT {
+                            break;
+                        }
+                        TranslateMessage(&msg);
+                        DispatchMessageW(&msg);
+                    }
+                }
+            })
+            .map_err(|error| AppError::Player(format!("could not start video surface: {error}")))?;
+
+        let video_hwnd = rx
+            .recv()
+            .map_err(|_| AppError::Player("video surface thread exited early".into()))??;
+
+        let _ = on_main(app, move || {
+            // SAFETY: subclassing `main_hwnd` and placing `video_hwnd` right behind it.
+            unsafe {
+                sync_embedded_surface(main_hwnd, video_hwnd);
+                SetWindowSubclass(
+                    main_hwnd,
+                    embed_subclass_proc,
+                    SUBCLASS_ID,
+                    video_hwnd as usize,
+                );
+            }
+        });
+
+        mpv.set("wid", &video_hwnd.to_string())?;
+
+        Ok(Self {
+            kind: SurfaceKind::Embedded {
+                main_hwnd,
+                video_hwnd,
+                thread: Arc::new(Mutex::new(Some(handle))),
+            },
+        })
     }
 
     pub fn open_window(_app: &AppHandle, mpv: &Arc<Mpv>, keys: KeyHandler) -> AppResult<Self> {
@@ -458,7 +686,7 @@ impl VideoSurface {
     }
 
     pub fn is_embedded(&self) -> bool {
-        false
+        matches!(self.kind, SurfaceKind::Embedded { .. })
     }
 
     pub fn set_scale(&self, _: &AppHandle, _: f64) {}
@@ -466,6 +694,7 @@ impl VideoSurface {
     pub fn is_window_fullscreen(&self) -> bool {
         match &self.kind {
             SurfaceKind::Window { fullscreen, .. } => fullscreen.load(Ordering::Acquire),
+            SurfaceKind::Embedded { .. } => false,
         }
     }
 
@@ -480,7 +709,10 @@ impl VideoSurface {
             hwnd,
             fullscreen: flag,
             ..
-        } = &self.kind;
+        } = &self.kind
+        else {
+            return Ok(());
+        };
         let was = flag.swap(fullscreen, Ordering::AcqRel);
         if was == fullscreen {
             return Ok(());
@@ -494,8 +726,35 @@ impl VideoSurface {
         Ok(())
     }
 
-    pub fn close(self, _: &AppHandle) {
+    pub fn close(self, app: &AppHandle) {
         match self.kind {
+            SurfaceKind::Embedded {
+                main_hwnd,
+                video_hwnd,
+                thread,
+            } => {
+                let app_clone = app.clone();
+                let _ = on_main(app, move || {
+                    // SAFETY: removing subclass from `main_hwnd` on the main thread.
+                    unsafe {
+                        RemoveWindowSubclass(main_hwnd, embed_subclass_proc, SUBCLASS_ID);
+                    }
+                    if let Some(window) = app_clone.get_webview_window("main") {
+                        let _ = window.set_background_color(Some(tauri::window::Color(
+                            0x10, 0x10, 0x11, 0xff,
+                        )));
+                    }
+                });
+                // SAFETY: posting WM_CLOSE to `video_hwnd` shuts down its message loop cleanly.
+                unsafe {
+                    PostMessageW(video_hwnd, WM_CLOSE, 0, 0);
+                }
+                if let Ok(mut guard) = thread.lock() {
+                    if let Some(handle) = guard.take() {
+                        let _ = handle.join();
+                    }
+                }
+            }
             SurfaceKind::Window { hwnd, thread, .. } => {
                 // SAFETY: posting WM_CLOSE to a live HWND shuts down its message loop cleanly.
                 unsafe {
@@ -516,6 +775,7 @@ impl VideoSurface {
     #[cfg(debug_assertions)]
     pub fn describe(&self, _: &AppHandle) -> String {
         match &self.kind {
+            SurfaceKind::Embedded { video_hwnd, .. } => format!("windows-embedded({video_hwnd})"),
             SurfaceKind::Window { hwnd, .. } => format!("windows-hwnd({hwnd})"),
         }
     }

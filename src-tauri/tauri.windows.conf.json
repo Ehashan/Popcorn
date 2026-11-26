@@ -1,4 +1,19 @@
 {
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Popcorn",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1000,
+        "minHeight": 650,
+        "theme": "Dark",
+        "transparent": true,
+        "backgroundColor": "#101011"
+      }
+    ]
+  },
   "bundle": {
     "targets": ["nsis", "msi"],
     "resources": {
