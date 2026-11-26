@@ -282,6 +282,13 @@ pub fn open_external(target: String) -> AppResult<()> {
     #[cfg(target_os = "macos")]
     Command::new("/usr/bin/open").arg(url).status()?;
     #[cfg(target_os = "windows")]
-    Command::new("cmd").args(["/C", "start", "", url]).status()?;
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()?;
+    }
     Ok(())
 }

@@ -302,7 +302,7 @@ function onKeyDown(event) {
   // An open dialog handles its own keys.
   if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
   const onboardingScreen = current()?.name === 'onboarding';
-  if (event.metaKey && event.key === '[') {
+  if ((event.metaKey && event.key === '[') || (event.altKey && event.key === 'ArrowLeft')) {
     event.preventDefault();
     back();
   } else if (
@@ -337,6 +337,8 @@ function paintThemeToggle() {
   toggle.title = label;
 }
 
+const isMac = () => /Mac|iPhone|iPad/i.test(navigator.platform);
+
 function initChrome() {
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
   window.addEventListener(THEME_CHANGED, paintThemeToggle);
@@ -346,6 +348,10 @@ function initChrome() {
     control.addEventListener('click', () => navigate(control.dataset.route));
   }
   document.getElementById('search-box').prepend(icon('search'));
+  if (!isMac()) {
+    const kbd = document.querySelector('#search-box kbd');
+    if (kbd) kbd.textContent = 'Ctrl K';
+  }
   searchInput.addEventListener('input', onSearchInput);
   searchInput.addEventListener('keydown', onSearchKey);
   app.addEventListener('scroll', onScroll, { passive: true });
@@ -361,7 +367,7 @@ async function boot() {
     );
     return;
   }
-  document.documentElement.classList.add('tauri');
+  document.documentElement.classList.add('tauri', isMac() ? 'os-macos' : 'os-windows');
   syncWindowTheme();
   try {
     const onScan = scanStatus();

@@ -34,7 +34,7 @@ img { display: block; max-width: 100%; }
 /* ───────── Header ───────── */
 .header { position: fixed; inset: 0 0 auto; z-index: 60; height: var(--header); display: flex; align-items: center; gap: 28px; padding: 0 var(--pad); background: linear-gradient(180deg, rgb(var(--c-velvet) / .85), rgb(var(--c-velvet) / 0)); transition: background .3s, box-shadow .3s; }
 /* Room for the macOS traffic lights. */
-.tauri .header { padding-left: max(var(--pad), 88px); }
+.tauri.os-macos .header { padding-left: max(var(--pad), 88px); }
 .header.solid { background: rgb(var(--c-velvet) / .86); backdrop-filter: saturate(1.4) blur(20px); -webkit-backdrop-filter: saturate(1.4) blur(20px); box-shadow: 0 1px 0 var(--line); }
 .header.minimal { background: transparent; box-shadow: none; }
 .header.minimal > * { visibility: hidden; }
