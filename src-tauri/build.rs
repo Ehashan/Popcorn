@@ -21,6 +21,17 @@ const COMMANDS: &[&str] = &[
     "refresh_title",
     "refresh_all_metadata",
     "clear_image_cache",
+    "player_open",
+    "player_close",
+    "player_toggle_pause",
+    "player_seek",
+    "player_set_volume",
+    "player_toggle_mute",
+    "player_set_audio",
+    "player_set_subtitle",
+    "player_add_subtitle",
+    "player_toggle_fullscreen",
+    "player_exit_fullscreen",
 ];
 
 fn main() {

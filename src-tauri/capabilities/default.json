@@ -9,6 +9,7 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "allow-app-info",
     "allow-get-settings",
     "allow-pick-media-folder",
@@ -28,6 +29,17 @@
     "allow-fix-match",
     "allow-refresh-title",
     "allow-refresh-all-metadata",
-    "allow-clear-image-cache"
+    "allow-clear-image-cache",
+    "allow-player-open",
+    "allow-player-close",
+    "allow-player-toggle-pause",
+    "allow-player-seek",
+    "allow-player-set-volume",
+    "allow-player-toggle-mute",
+    "allow-player-set-audio",
+    "allow-player-set-subtitle",
+    "allow-player-add-subtitle",
+    "allow-player-toggle-fullscreen",
+    "allow-player-exit-fullscreen"
   ]
 }
