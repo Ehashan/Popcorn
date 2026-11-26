@@ -7,6 +7,7 @@ import { button, h } from '../dom.js';
 /** `draft.key` keeps the typed text when the screen is rebuilt. */
 export function keyField({ draft, focusPrefix, hasSavedKey = () => false }) {
   const input = h('input', {
+    class: 'field',
     type: 'password',
     placeholder: 'API key or read access token',
     'aria-label': 'TMDB API key',
@@ -26,6 +27,7 @@ export function keyField({ draft, focusPrefix, hasSavedKey = () => false }) {
     status.classList.toggle('error', error);
   }
   const test = button('Test key', {
+    variant: 'btn-sm',
     dataset: { focusKey: `${focusPrefix}:test` },
     onClick: async () => {
       const typed = input.value.trim();
@@ -44,7 +46,7 @@ export function keyField({ draft, focusPrefix, hasSavedKey = () => false }) {
       test.disabled = false;
     },
   });
-  const actions = h('div', { class: 'actions' }, test);
+  const actions = h('div', { class: 'set-controls' }, test);
   return {
     el: h('div', { class: 'key-field' }, input, actions, status),
     actions,

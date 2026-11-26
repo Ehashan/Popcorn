@@ -50,6 +50,7 @@ pub fn run() {
             commands::get_title,
             commands::continue_watching,
             commands::search_library,
+            commands::search_episodes,
             commands::set_watched,
             commands::set_title_watched,
             commands::reveal_file,

@@ -25,6 +25,7 @@ export const api = {
   getTitle: (id) => invoke('get_title', { id }),
   continueWatching: () => invoke('continue_watching'),
   searchLibrary: (query) => invoke('search_library', { query }),
+  searchEpisodes: (query) => invoke('search_episodes', { query }),
   setWatched: (fileId, watched) => invoke('set_watched', { fileId, watched }),
   setTitleWatched: (titleId, watched) => invoke('set_title_watched', { titleId, watched }),
   revealFile: (fileId) => invoke('reveal_file', { fileId }),

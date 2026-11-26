@@ -8,9 +8,13 @@ export const state = {
   history: [],
   /** Sort and filters per grid, kept while the app runs. */
   gridPrefs: {
-    movie: { sort: 'title', genre: '', watched: 'all' },
-    show: { sort: 'title', genre: '', watched: 'all' },
+    movie: { sort: 'added', genre: '', watched: 'all' },
+    show: { sort: 'added', genre: '', watched: 'all' },
   },
   /** True while the player covers the app. */
   playing: false,
+  /** When the first files were added, in Unix seconds. See `isNew`. */
+  libraryStart: 0,
+  /** When the last scan this session finished. */
+  lastScan: null,
 };

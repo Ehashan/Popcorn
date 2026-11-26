@@ -1,11 +1,12 @@
 // A poster grid that only builds cards as they are about to scroll into view.
 
 import { h } from '../dom.js';
-import { posterCard } from './poster-card.js';
+import { isNew, posterCard } from './poster-card.js';
 
 const BATCH = 60;
 
-const signature = (t) => `${t.title}|${t.year}|${t.watched}|${t.poster_path}|${t.kind}`;
+const signature = (t) =>
+  `${t.title}|${t.year}|${t.watched}|${t.poster_path}|${t.kind}|${t.rating}|${t.runtime}|${isNew(t)}`;
 
 /**
  * `ui.rendered` remembers how far the grid was built, so the scroll position

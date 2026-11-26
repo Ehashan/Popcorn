@@ -12,6 +12,7 @@ const COMMANDS: &[&str] = &[
     "get_title",
     "continue_watching",
     "search_library",
+    "search_episodes",
     "set_watched",
     "set_title_watched",
     "reveal_file",

@@ -224,6 +224,11 @@ pub fn search_library(state: State<'_, AppState>, query: String) -> AppResult<Ve
 }
 
 #[tauri::command(async)]
+pub fn search_episodes(state: State<'_, AppState>, query: String) -> AppResult<Vec<ContinueItem>> {
+    queries::search_episodes(&state.db(), &query)
+}
+
+#[tauri::command(async)]
 pub fn set_watched(
     app: AppHandle,
     state: State<'_, AppState>,

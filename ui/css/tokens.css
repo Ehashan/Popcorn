@@ -1,0 +1,167 @@
+/*
+ * Popcorn color tokens. This is the only file that may contain color values;
+ * `scripts/check-colors.sh` enforces that.
+ *
+ * There are two themes, "Film noir" dark (the default) and light. To re-theme,
+ * edit the channels below ("red green blue", 0-255). Every solid and
+ * transparent shade in the app is derived from them.
+ *
+ * One color lives outside CSS: the window background shown while the app
+ * starts, `backgroundColor` in src-tauri/tauri.conf.json. Keep it equal to
+ * the dark --c-velvet.
+ */
+
+/* ───────── Dark ───────── */
+/* `.theme-dark` keeps one part of the page dark in either theme (the player). */
+:root,
+.theme-dark {
+  color-scheme: dark;
+
+  /* ── Brand palette: Film noir ── */
+  --c-velvet: 16 16 17;      /* base background */
+  --c-curtain: 28 28 30;     /* raised surfaces */
+  --c-seat: 42 42 46;        /* hover, selected segments */
+  --c-butter: 229 57 70;     /* accent: cinema red */
+  --c-kernel: 240 238 233;   /* main text */
+  --c-smoke: 165 163 158;    /* secondary text */
+  --c-dim: 112 110 106;      /* tertiary text */
+  --c-marquee: 245 197 66;   /* "new" badges, logo stripes */
+
+  /* ── Status ── */
+  --c-success: 140 210 160;
+  --c-danger: 255 130 120;
+
+  --on-marquee: rgb(var(--c-velvet));  /* text on "new" badges */
+  --logo-pop: rgb(var(--c-kernel));
+}
+
+/* ───────── Light ───────── */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* ── Brand palette: Film noir light ── */
+  --c-velvet: 245 245 244;   /* base background */
+  --c-curtain: 255 255 255;  /* raised surfaces */
+  --c-seat: 231 230 227;     /* hover, selected segments */
+  --c-butter: 204 36 52;     /* accent: cinema red */
+  --c-kernel: 22 22 24;      /* main text */
+  --c-smoke: 92 91 88;       /* secondary text */
+  --c-dim: 120 118 114;      /* tertiary text */
+  --c-marquee: 24 24 26;     /* "new" badges: black */
+
+  /* ── Status ── */
+  --c-success: 22 128 72;
+  --c-danger: 190 40 40;
+
+  --on-marquee: rgb(var(--c-white));
+  --logo-pop: rgb(var(--c-logo-pop));
+  --c-logo-pop: 232 172 48;  /* the popcorn in the logo */
+}
+
+/* ───────── Shared by both themes ───────── */
+:root,
+.theme-dark {
+  /* ── Neutrals: shadows and the player over video ── */
+  --c-white: 255 255 255;
+  --c-black: 0 0 0;
+  --c-shade: 8 8 9;          /* dialog backdrop */
+
+  /* ── On artwork: stays the same, because posters do not change theme ── */
+  --c-on-art: 240 238 233;   /* text and icons */
+  --c-art-shade: 16 16 17;   /* darkening behind them */
+
+  /* ── TMDB mark ── */
+  --c-tmdb-start: 144 206 161;
+  --c-tmdb-end: 1 180 228;
+  --c-tmdb-ink: 13 37 63;
+
+  /* ── Solid colors ── */
+  --velvet: rgb(var(--c-velvet));
+  --curtain: rgb(var(--c-curtain));
+  --seat: rgb(var(--c-seat));
+  --butter: rgb(var(--c-butter));
+  --kernel: rgb(var(--c-kernel));
+  --smoke: rgb(var(--c-smoke));
+  --dim: rgb(var(--c-dim));
+  --marquee: rgb(var(--c-marquee));
+  --success: rgb(var(--c-success));
+  --danger: rgb(var(--c-danger));
+  --white: rgb(var(--c-white));
+  --black: rgb(var(--c-black));
+  --on-art: rgb(var(--c-on-art));
+  --on-accent: var(--white);           /* text on the accent color */
+  --focus: var(--butter);
+  --line: rgb(var(--c-kernel) / .09);  /* hairline borders */
+
+  /* ── Generated artwork, used when a title has no cached image ── */
+  --art-base: rgb(var(--c-art-shade));
+  --art1-a: #FF7A45;
+  --art1-b: #5B2A86;
+  --art1-c: #2A0F24;
+  --art2-a: #4FA3B8;
+  --art2-b: #2B4A6F;
+  --art2-c: #0F1E2E;
+  --art3-a: #E040A0;
+  --art3-b: #3CE0C0;
+  --art3-c: #1C0E2E;
+  --art4-a: #F2B33D;
+  --art4-b: #C4472F;
+  --art4-c: #2B1408;
+  --art5-a: #3D6BE0;
+  --art5-b: #D9A441;
+  --art5-c: #0B1430;
+  --art6-a: #D98E3A;
+  --art6-b: #7A1F2B;
+  --art6-c: #1A0A0C;
+  --art7-a: #58B368;
+  --art7-b: #E0B24A;
+  --art7-c: #0E2316;
+  --art8-a: #FF5A2A;
+  --art8-b: #FFB13B;
+  --art8-c: #2A0D05;
+  --art9-a: #B9A6E8;
+  --art9-b: #4A3B7A;
+  --art9-c: #141022;
+  --art10-a: #C2263F;
+  --art10-b: #E8B04B;
+  --art10-c: #1E0710;
+  --art11-a: #2EC4B6;
+  --art11-b: #8E3BD6;
+  --art11-c: #0A1420;
+  --art12-a: #5B8DEF;
+  --art12-b: #E8A0BF;
+  --art12-c: #0E1226;
+
+  /* ── Cast avatars without a photo ── */
+  --face1-a: #8C3A4F;
+  --face1-b: #3B1F3F;
+  --face2-a: #8C6A36;
+  --face2-b: #46301A;
+  --face3-a: #3A7A68;
+  --face3-b: #17323A;
+  --face4-a: #45609A;
+  --face4-b: #201E44;
+  --face5-a: #7A4A92;
+  --face5-b: #2E1536;
+  --face6-a: #9A5236;
+  --face6-b: #3A1410;
+}
+
+.art-p1 { --art-a: var(--art1-a); --art-b: var(--art1-b); --art-c: var(--art1-c); }
+.art-p2 { --art-a: var(--art2-a); --art-b: var(--art2-b); --art-c: var(--art2-c); }
+.art-p3 { --art-a: var(--art3-a); --art-b: var(--art3-b); --art-c: var(--art3-c); }
+.art-p4 { --art-a: var(--art4-a); --art-b: var(--art4-b); --art-c: var(--art4-c); }
+.art-p5 { --art-a: var(--art5-a); --art-b: var(--art5-b); --art-c: var(--art5-c); }
+.art-p6 { --art-a: var(--art6-a); --art-b: var(--art6-b); --art-c: var(--art6-c); }
+.art-p7 { --art-a: var(--art7-a); --art-b: var(--art7-b); --art-c: var(--art7-c); }
+.art-p8 { --art-a: var(--art8-a); --art-b: var(--art8-b); --art-c: var(--art8-c); }
+.art-p9 { --art-a: var(--art9-a); --art-b: var(--art9-b); --art-c: var(--art9-c); }
+.art-p10 { --art-a: var(--art10-a); --art-b: var(--art10-b); --art-c: var(--art10-c); }
+.art-p11 { --art-a: var(--art11-a); --art-b: var(--art11-b); --art-c: var(--art11-c); }
+.art-p12 { --art-a: var(--art12-a); --art-b: var(--art12-b); --art-c: var(--art12-c); }
+.face-p1 { --face-a: var(--face1-a); --face-b: var(--face1-b); }
+.face-p2 { --face-a: var(--face2-a); --face-b: var(--face2-b); }
+.face-p3 { --face-a: var(--face3-a); --face-b: var(--face3-b); }
+.face-p4 { --face-a: var(--face4-a); --face-b: var(--face4-b); }
+.face-p5 { --face-a: var(--face5-a); --face-b: var(--face5-b); }
+.face-p6 { --face-a: var(--face6-a); --face-b: var(--face6-b); }

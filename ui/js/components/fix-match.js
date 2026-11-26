@@ -1,52 +1,58 @@
 // Search TMDB and pick the right title by hand.
 
 import { api, errorMessage } from '../api.js';
-import { artwork, button, h, iconButton } from '../dom.js';
+import { artwork, button, h } from '../dom.js';
 import { toast } from './toast.js';
 
 export function openFixMatch(title, onDone) {
   const opener = document.activeElement?.dataset?.focusKey;
   let request = 0;
   let saving = false;
+  let debounce;
 
   const input = h('input', {
+    class: 'field',
     type: 'text',
     value: title.title,
     'aria-label': 'Search TMDB',
     spellcheck: false,
     autocomplete: 'off',
+    onInput: () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(search, 300);
+    },
+    onKeydown: (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      clearTimeout(debounce);
+      search();
+    },
   });
-  const status = h('p', { class: 'dialog-status', role: 'status' });
-  const results = h('ul', { class: 'match-list' });
+  const status = h('p', { class: 'field-status', role: 'status' });
+  const results = h('ul', { class: 'matches' });
 
   const say = (text, error = false) => {
     status.textContent = text;
     status.classList.toggle('error', error);
   };
 
+  const what = title.kind === 'show' ? 'series' : 'movie';
   const dialog = h(
     'dialog',
     { class: 'dialog', 'aria-label': 'Fix match' },
-    h(
-      'header',
-      { class: 'dialog-head' },
-      h('h2', { text: 'Fix match' }),
-      iconButton('close', 'Close', { onClick: () => dialog.close() }),
-    ),
-    h(
-      'form',
-      {
-        class: 'input-row',
-        onSubmit: (event) => {
-          event.preventDefault();
-          search();
-        },
-      },
-      input,
-      button('Search', { type: 'submit', variant: 'btn-primary' }),
-    ),
+    h('h2', { text: 'Fix match' }),
+    h('p', {
+      class: 'dialog-intro',
+      text: `Wrong poster or details? Search TMDB and pick the right ${what}.`,
+    }),
+    input,
     status,
     results,
+    h(
+      'div',
+      { class: 'dialog-foot' },
+      button('Cancel', { variant: 'btn-quiet btn-sm', onClick: () => dialog.close() }),
+    ),
   );
 
   async function search() {
@@ -66,23 +72,22 @@ export function openFixMatch(title, onDone) {
   }
 
   function matchRow(match) {
+    const kind = title.kind === 'show' ? 'TV series' : 'Movie';
     return h(
       'li',
       {},
       h(
         'button',
         { type: 'button', class: 'match', onClick: () => choose(match) },
-        artwork(match.poster_url, match.title, {
-          className: 'poster match-poster',
-          caption: false,
-          remote: true,
-        }),
+        artwork(match.poster_url, match.title, { caption: false, remote: true }),
         h(
           'span',
-          { class: 'match-text' },
-          h('span', { class: 'card-title', text: match.title }),
-          h('span', { class: 'card-sub', text: match.year ? String(match.year) : 'Year unknown' }),
+          {},
+          h('b', { text: match.title }),
+          h('span', { class: 'match-sub', text: `${match.year ?? 'Year unknown'}, ${kind}` }),
         ),
+        match.tmdb_id === title.tmdb_id &&
+          h('span', { class: 'match-current', text: 'Current match' }),
       ),
     );
   }
@@ -106,6 +111,7 @@ export function openFixMatch(title, onDone) {
   }
 
   dialog.addEventListener('close', () => {
+    clearTimeout(debounce);
     request += 1;
     dialog.remove();
     // The button that opened the dialog may have been rebuilt meanwhile.

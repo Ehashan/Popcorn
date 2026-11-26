@@ -2,7 +2,7 @@
 // so the screen underneath keeps its scroll position while a video plays.
 
 import { api, listen } from '../api.js';
-import { button, episodeCode, formatTime, h, icon, iconButton } from '../dom.js';
+import { artwork, button, episodeCode, formatTime, h, icon, iconButton } from '../dom.js';
 import { state } from '../state.js';
 import { toast, toastError } from '../components/toast.js';
 
@@ -203,13 +203,18 @@ async function escape(s) {
   if (!wasFullscreen && session === s) closePlayer();
 }
 
-const togglePause = () => run(api.playerTogglePause());
+function togglePause(s) {
+  if (s.embedded) s.ui.pulse(s.status === 'paused' || s.ended ? 'play' : 'pause');
+  run(api.playerTogglePause());
+}
 const toggleMute = () => run(api.playerToggleMute());
 const toggleFullscreen = () => run(api.playerToggleFullscreen());
 
 function seekBy(s, seconds) {
   run(api.playerSeek(seconds, true));
-  s.ui.flash(`${seconds > 0 ? '+' : '−'}${Math.abs(seconds)} s`);
+  // The ten second icons say it all; longer jumps are spelled out.
+  if (Math.abs(seconds) === 10) s.ui.pulse(seconds > 0 ? 'skip' : 'rewind');
+  else s.ui.flash(`${seconds > 0 ? '+' : '−'}${Math.abs(seconds)} s`);
 }
 
 function setVolume(s, volume) {
@@ -288,7 +293,7 @@ export function playerKey(event) {
 
   const step = event.shiftKey ? 60 : 10;
   const actions = {
-    ' ': togglePause,
+    ' ': () => togglePause(s),
     ArrowLeft: () => seekBy(s, -step),
     ArrowRight: () => seekBy(s, step),
     ArrowUp: () => {
@@ -321,13 +326,13 @@ function buildUi(s) {
   let overControls = false;
   let pointer = '';
 
-  const title = h('span', { class: 'player-title' });
-  const subtitle = h('span', { class: 'player-subtitle' });
+  const title = h('span', { class: 'p-title' });
+  const subtitle = h('span', { class: 'p-subtitle' });
   const back = iconButton('back', 'Back (Esc)', { onClick: closePlayer });
 
-  const seekFill = h('span', { class: 'seek-fill' });
+  const seekFill = h('span', { class: 'seek-played' });
   const seekThumb = h('span', { class: 'seek-thumb' });
-  const tooltip = h('span', { class: 'seek-tooltip', hidden: true });
+  const tooltip = h('span', { class: 'seek-tip', hidden: true });
   const seek = h(
     'div',
     {
@@ -341,14 +346,26 @@ function buildUi(s) {
     seekThumb,
     tooltip,
   );
-  const clock = h('span', { class: 'clock' });
+  const elapsed = h('b');
+  const total = h('span');
+  const clock = h('span', { class: 'p-time' }, elapsed, ' / ', total);
 
-  const playButton = iconButton('play', 'Play or pause (Space)', { onClick: togglePause });
+  const playButton = iconButton('play', 'Play or pause (Space)', {
+    class: 'big',
+    onClick: () => togglePause(s),
+  });
+  const rewindButton = iconButton('rewind', 'Back 10 seconds', {
+    class: 'p-rew',
+    onClick: () => seekBy(s, -10),
+  });
+  const forwardButton = iconButton('skip', 'Forward 10 seconds', {
+    class: 'p-fwd',
+    onClick: () => seekBy(s, 10),
+  });
   const nextButton = iconButton('next', 'Next episode (N)', { onClick: () => playNext(s) });
   const muteButton = iconButton('volume', 'Mute (M)', { onClick: toggleMute });
   const volume = h('input', {
     type: 'range',
-    class: 'volume',
     min: '0',
     max: '100',
     'aria-label': 'Volume',
@@ -365,49 +382,52 @@ function buildUi(s) {
   const fullscreenButton = iconButton('fullscreen', 'Fullscreen (F)', {
     onClick: toggleFullscreen,
   });
-  const menuBox = h('div', { class: 'player-menu', role: 'menu', hidden: true });
+  const menuBox = h('div', { class: 'menu', role: 'menu', hidden: true });
 
   const top = h(
     'div',
-    { class: 'player-top player-chrome', 'data-tauri-drag-region': '' },
+    { class: 'p-ui p-top', 'data-tauri-drag-region': '' },
     back,
-    h('div', { class: 'player-heading' }, title, subtitle),
+    h('div', {}, title, subtitle),
   );
   const bottom = h(
     'div',
-    { class: 'player-bottom player-chrome' },
+    { class: 'p-ui p-bottom' },
     seek,
     h(
       'div',
-      { class: 'player-buttons' },
+      { class: 'p-controls' },
       playButton,
-      nextButton,
-      muteButton,
-      volume,
+      rewindButton,
+      forwardButton,
+      h('div', { class: 'vol' }, muteButton, volume),
       clock,
       h('span', { class: 'spacer' }),
-      audioButton,
+      nextButton,
       subtitleButton,
+      audioButton,
       fullscreenButton,
     ),
-    menuBox,
   );
 
-  const spinner = h('div', { class: 'player-spinner', role: 'status', 'aria-label': 'Loading' });
-  const flashBox = h('div', { class: 'player-flash', role: 'status', hidden: true });
+  const spinner = h('div', { class: 'p-spinner', role: 'status', 'aria-label': 'Loading' });
+  const flashBox = h('div', { class: 'p-flash', role: 'status', hidden: true });
+  const pulseBox = h('div', { class: 'p-pulse', 'aria-hidden': 'true' });
 
-  const countdownText = h('p', { class: 'next-heading' });
-  const countdownName = h('p', { class: 'muted' });
+  const countdownText = h('small');
+  const countdownName = h('b');
+  const countdownArt = h('div');
   const countdownCard = h(
     'div',
     { class: 'next-card', hidden: true },
-    countdownText,
-    countdownName,
+    countdownArt,
+    h('div', {}, countdownText, countdownName),
     h(
       'div',
-      { class: 'actions' },
-      button('Play now', { icon: 'play', variant: 'btn-primary', onClick: () => playNext(s) }),
+      { class: 'next-buttons' },
+      button('Play now', { icon: 'play', variant: 'btn-play btn-sm', onClick: () => playNext(s) }),
       button('Cancel', {
+        variant: 'btn-sm',
         onClick: () => {
           s.cancelled = true;
           hideCountdown(s);
@@ -423,13 +443,13 @@ function buildUi(s) {
     { class: 'player-external', hidden: true },
     h('h2', { text: 'Playing in a separate window' }),
     externalTitle,
-    button('Stop', { variant: 'btn-primary', onClick: closePlayer }),
+    button('Stop', { variant: 'btn-play', onClick: closePlayer }),
   );
 
   const surface = h('div', {
     class: 'player-surface',
     onClick: () => {
-      if (!closeMenu() && s.embedded) togglePause();
+      if (!closeMenu() && s.embedded) togglePause(s);
     },
     onDblclick: () => {
       if (s.embedded) toggleFullscreen();
@@ -438,15 +458,18 @@ function buildUi(s) {
 
   const el = h(
     'div',
-    { class: 'player', tabIndex: -1, role: 'region', 'aria-label': 'Video player' },
+    // Controls over video stay dark in either theme.
+    { class: 'player theme-dark', tabIndex: -1, role: 'region', 'aria-label': 'Video player' },
     surface,
     // Keeps the window draggable by its top edge.
     h('div', { class: 'player-drag', 'data-tauri-drag-region': '' }),
     external,
     spinner,
+    pulseBox,
     flashBox,
     top,
     bottom,
+    menuBox,
     countdownCard,
   );
 
@@ -482,7 +505,7 @@ function buildUi(s) {
   el.addEventListener('focusin', (event) => {
     if (event.target !== el) wake();
   });
-  for (const bar of [top, bottom]) {
+  for (const bar of [top, bottom, menuBox]) {
     bar.addEventListener('pointerenter', () => {
       overControls = true;
     });
@@ -499,7 +522,8 @@ function buildUi(s) {
   function time() {
     const position = scrubbing ?? s.position;
     paintSeek(position);
-    clock.textContent = `${formatTime(position)} / ${formatTime(s.duration)}`;
+    elapsed.textContent = formatTime(position);
+    total.textContent = formatTime(s.duration);
     seek.setAttribute('aria-valuemax', String(Math.floor(s.duration)));
     seek.setAttribute('aria-valuenow', String(Math.floor(position)));
     seek.setAttribute(
@@ -556,15 +580,19 @@ function buildUi(s) {
   });
 
   function menuItem(label, checked, onClick, key) {
-    return h('button', {
-      type: 'button',
-      class: 'menu-item',
-      role: checked === null ? 'menuitem' : 'menuitemradio',
-      'aria-checked': checked === null ? null : String(checked),
-      text: label,
-      dataset: { menuKey: key },
-      onClick,
-    });
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: 'menu-item',
+        role: checked === null ? 'menuitem' : 'menuitemradio',
+        'aria-checked': checked === null ? null : String(checked),
+        dataset: { menuKey: key },
+        onClick,
+      },
+      icon(checked === null ? 'plus' : 'check'),
+      h('span', { text: label }),
+    );
   }
   function renderMenu() {
     if (!menu) return;
@@ -595,7 +623,7 @@ function buildUi(s) {
         ),
       );
       items.push(
-        h('div', { class: 'menu-separator', role: 'separator' }),
+        h('hr'),
         menuItem(
           'Load subtitle file…',
           null,
@@ -674,9 +702,15 @@ function buildUi(s) {
     if (!s.countdown) return;
     const { next } = s.item;
     countdownText.textContent = `Next episode in ${Math.max(1, Math.ceil(s.countdown.left))} s`;
-    countdownName.textContent = [episodeCode(next.season, next.episode), next.episode_name]
-      .filter(Boolean)
-      .join(' · ');
+    const code = episodeCode(next.season, next.episode);
+    countdownName.textContent = [code, next.episode_name].filter(Boolean).join('  ');
+    const seed = `${s.item.title} ${code}`;
+    if (countdownArt.dataset.seed !== seed) {
+      countdownArt.dataset.seed = seed;
+      countdownArt.replaceChildren(
+        artwork(null, '', { caption: false, wide: true, seed }),
+      );
+    }
   }
 
   /** Redraws everything for a new file, or while one is loading. */
@@ -713,6 +747,13 @@ function buildUi(s) {
     }, 1200);
   }
 
+  function pulse(name) {
+    pulseBox.replaceChildren(icon(name));
+    pulseBox.classList.remove('show');
+    void pulseBox.offsetWidth;
+    pulseBox.classList.add('show');
+  }
+
   return {
     el,
     reset,
@@ -722,6 +763,7 @@ function buildUi(s) {
     countdown,
     wake,
     flash,
+    pulse,
     closeMenu,
     menuKey,
     destroy: () => {

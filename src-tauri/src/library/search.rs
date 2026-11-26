@@ -10,6 +10,12 @@ pub struct Document {
     pub extra: Vec<String>,
 }
 
+/// Whether every word of a non-empty query appears in `text`.
+pub fn matches_text(query: &str, text: &str) -> bool {
+    let (query, text) = (normalize(query), normalize(text));
+    !query.is_empty() && query.split(' ').all(|word| text.contains(word))
+}
+
 /// Ids of matching titles, title matches first. Every word of the query has to
 /// appear, either in the title or together in one cast or episode name.
 pub fn search(query: &str, documents: &[Document]) -> Vec<i64> {

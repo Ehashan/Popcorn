@@ -3,6 +3,11 @@
 // page through textContent and element properties, never through markup.
 
 import { fileUrl } from './api.js';
+import { motif } from './components/motif.js';
+
+/** The number of `.art-pN` and `.face-pN` classes in tokens.css. */
+const PALETTES = 12;
+export const FACES = 6;
 
 export function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
@@ -27,35 +32,61 @@ export function append(el, ...children) {
   return el;
 }
 
+// Each icon is a list of shapes: a path string, or [tag, attributes, text].
+const solid = (d) => ['path', { d, class: 'solid' }];
+const ring = (cx, cy, r) => ['circle', { cx, cy, r }];
+const ten = (x) => ['text', { x, y: '15.3' }, '10'];
+const SPEAKER = solid('M4 9.5h3.5L12 6v12l-4.5-3.5H4z');
+
 const ICONS = {
-  back: 'M15 5l-7 7 7 7',
-  forward: 'M9 5l7 7-7 7',
-  play: 'M8 5v14l11-7z',
-  pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
-  next: 'M5 5v14l10-7zM16 5h3v14h-3z',
-  check: 'M5 12.5l4.5 4.5L19 7.5',
-  search: 'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM15.5 15.5L20 20',
-  settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4',
-  volume: 'M4 9.5v5h4l5 4v-13l-5 4zM16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11',
-  muted: 'M4 9.5v5h4l5 4v-13l-5 4zM16.500 9.500l5 5M21.500 9.500l-5 5',
-  audio: 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zM19 16a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z',
-  subtitles: 'M3.5 5.5h17v13h-17zM7 14.5h4M14 14.5h3M7 11h2M12 11h5',
-  fullscreen: 'M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5',
-  info: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 11v5M12 8v.01',
-  close: 'M6 6l12 12M18 6L6 18',
+  play: [solid('M7.5 5.2v13.6L19 12z')],
+  pause: [solid('M7 5h3.4v14H7zM13.6 5H17v14h-3.4z')],
+  back: ['M15 5l-7 7 7 7'],
+  forward: ['M9 5l7 7-7 7'],
+  check: ['M5 12.5l4.5 4.5L19 7.5'],
+  info: [ring(12, 12, 8.5), 'M12 11v5.5M12 7.8v.2'],
+  search: [ring(11, 11, 6.5), 'M16 16l4.5 4.5'],
+  settings: ['M4 7h9M17 7h3M4 17h3M11 17h9', ring(15, 7, 2.2), ring(9, 17, 2.2)],
+  subtitles: [
+    ['rect', { x: 3, y: 5.5, width: 18, height: 13, rx: 2.5 }],
+    'M10.3 10.3a2.4 2.4 0 1 0 0 3.4M16.8 10.3a2.4 2.4 0 1 0 0 3.4',
+  ],
+  audio: ['M4 10v4M8 7v10M12 4.5v15M16 8v8M20 10.5v3'],
+  volume: [SPEAKER, 'M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11'],
+  muted: [SPEAKER, 'M16 9.5l5 5M21 9.5l-5 5'],
+  fullscreen: ['M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'],
+  rewind: ['M5.2 12a7 7 0 1 0 2.2-5.1', 'M4.5 3.8v3.6h3.6', ten('12.4')],
+  skip: ['M18.8 12a7 7 0 1 1-2.2-5.1', 'M19.5 3.8v3.6h-3.6', ten('11.6')],
+  next: [solid('M6 5.5v13l9.5-6.5z'), 'M18.5 5v14'],
+  folder: ['M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'],
+  refresh: ['M19 12a7 7 0 1 1-2.1-5', 'M19.5 4.5V8H16'],
+  restart: ['M5 12a7 7 0 1 0 2.1-5', 'M4.5 4.5V8H8'],
+  star: [solid('M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8z')],
+  wand: ['M4 20L14 10', solid('M15.5 3.5l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z')],
+  eye: ['M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z', ring(12, 12, 2.8)],
+  plus: ['M12 5v14M5 12h14'],
+  close: ['M6 6l12 12M18 6L6 18'],
+  sun: [ring(12, 12, 4), 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4'],
+  moon: ['M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z'],
 };
-const FILLED = new Set(['play', 'pause', 'next']);
+
+export function svg(tag, attrs = {}, ...children) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+  el.append(...children);
+  return el;
+}
 
 export function icon(name) {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('class', FILLED.has(name) ? 'icon icon-filled' : 'icon');
-  svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(ns, 'path');
-  path.setAttribute('d', ICONS[name]);
-  svg.append(path);
-  return svg;
+  return svg(
+    'svg',
+    { viewBox: '0 0 24 24', class: 'icon', 'aria-hidden': 'true' },
+    ...ICONS[name].map((shape) => {
+      if (typeof shape === 'string') return svg('path', { d: shape });
+      const [tag, attrs, text] = shape;
+      return svg(tag, attrs, ...(text ? [text] : []));
+    }),
+  );
 }
 
 export function button(label, { icon: iconName, variant = '', ...props } = {}) {
@@ -81,10 +112,10 @@ export function iconButton(iconName, label, props = {}) {
   );
 }
 
-export function hueOf(text) {
+export function hashOf(text) {
   let hash = 0;
   for (const char of String(text)) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
-  return hash % 360;
+  return hash;
 }
 
 // Images that have loaded once are shown at once when a view is rebuilt, so a
@@ -92,24 +123,28 @@ export function hueOf(text) {
 const seenImages = new Set();
 
 /**
- * A box showing a cached image over a generated placeholder. The placeholder
- * stays when there is no image or it fails to load.
+ * A box showing a cached image over generated artwork, which stays when there
+ * is no image or it fails to load. The artwork's colors and motif follow from
+ * `seed`, so a title always looks the same.
  */
-export function artwork(source, label, { className = '', caption = true, remote = false } = {}) {
-  const box = h(
-    'div',
-    { class: `art ${className}`.trim() },
-    caption && h('span', { class: 'art-label', text: label }),
-  );
-  box.style.setProperty('--hue', hueOf(label));
+export function artwork(source, label, options = {}) {
+  const { className = '', caption = true, sub = null, wide = false, seed = label, remote = false } =
+    options;
+  const hash = hashOf(seed);
   const url = remote ? source : fileUrl(source);
+  const box = h('span', {
+    class: ['art', `art-p${(hash % PALETTES) + 1}`, wide && 'art-wide', className]
+      .filter(Boolean)
+      .join(' '),
+  });
+  if (!url) box.append(motif(hash, wide));
+  if (caption) {
+    box.append(
+      h('span', { class: 'art-label' }, label, sub && h('small', { text: String(sub) })),
+    );
+  }
   if (url) {
-    const img = h('img', {
-      alt: '',
-      loading: 'lazy',
-      decoding: 'async',
-      draggable: false,
-    });
+    const img = h('img', { alt: '', loading: 'lazy', decoding: 'async', draggable: false });
     const loaded = () => {
       seenImages.add(url);
       box.classList.add('has-image');
@@ -174,5 +209,20 @@ export function episodeCode(season, episode) {
 }
 
 export function formatRating(rating) {
-  return rating > 0 ? `★ ${rating.toFixed(1)}` : null;
+  return rating > 0 ? rating.toFixed(1) : null;
+}
+
+export function formatLeft(position, duration) {
+  return `${formatRuntime(Math.max(1, Math.round((duration - position) / 60)))} left`;
+}
+
+/** Year, length, certificate and score. `extra` entries are plain text. */
+export function factList({ year, certification, rating }, ...extra) {
+  const items = [year, ...extra].filter(Boolean).map((text) => h('li', { text: String(text) }));
+  if (certification) items.push(h('li', { class: 'cert', text: certification }));
+  const score = formatRating(rating);
+  if (score) {
+    items.push(h('li', { class: 'score', title: 'TMDB rating' }, icon('star'), score));
+  }
+  return h('ul', { class: 'facts' }, items);
 }

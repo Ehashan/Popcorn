@@ -1,5 +1,5 @@
 import { errorMessage } from '../api.js';
-import { h } from '../dom.js';
+import { h, icon } from '../dom.js';
 
 const visible = new Map();
 
@@ -14,7 +14,14 @@ export function toast(message, { error = false } = {}) {
   if (entry) {
     clearTimeout(entry.timer);
   } else {
-    entry = { el: h('div', { class: error ? 'toast toast-error' : 'toast', text: message }) };
+    entry = {
+      el: h(
+        'div',
+        { class: error ? 'toast toast-error' : 'toast' },
+        icon(error ? 'info' : 'check'),
+        h('span', { text: message }),
+      ),
+    };
     visible.set(message, entry);
     host.append(entry.el);
     entry.el.addEventListener('click', () => dismiss(message));

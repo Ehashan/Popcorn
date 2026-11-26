@@ -38,9 +38,21 @@ Choices the build prompt did not cover. Each one is the simplest, lightest optio
 ## Phase 3: UI
 
 - Top navigation instead of a sidebar; it doubles as the window drag area.
+- Design: a featured carousel, film strip and cards, with search in the header. All colors are
+  tokens in `ui/css/tokens.css`, stored as RGB channels so transparent shades follow them.
+- Two themes, Film noir dark (default) and light. The choice is kept in the webview's
+  `localStorage` so it applies before the first paint. The player and text over artwork stay
+  dark-themed in both.
+- Titles without images get generated artwork; its palette and motif follow from the title.
+- The film strip becomes dots below 1180 px, where it would cover the hero text.
+- "New" marks files added in the last week, excluding the first import.
+- Only data the app really has is shown: no audio or subtitle lists on details pages, and no
+  image cache size.
+- Without `ui/img/tmdb-logo.svg`, a plain text "TMDB" badge is shown. It is not the official logo.
 - The player is an overlay, so the screen underneath keeps its scroll position.
 - Grids add cards in batches of 60 with lazy images. Home rows are capped at 30.
-- Search matches in Rust over titles, cast names and episode names.
+- Search matches in Rust over titles, cast names and episode names. `search_episodes` also
+  returns matching episodes as playable cards.
 - WebKit reports a harmless-looking `style-src-attr` CSP violation for each `<select>` created. The
   CSP is left strict.
 

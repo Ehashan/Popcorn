@@ -51,6 +51,14 @@ The results are in `src-tauri/target/aarch64-apple-darwin/release/bundle/`. Use 
 rather than `cargo tauri build` alone, which does not bundle libmpv. Bundled components and
 their licenses are listed in [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).
 
+## Changing colors
+
+Popcorn has a dark and a light theme; switch with the header button or in Settings.
+Every color in the interface is a token in [ui/css/tokens.css](ui/css/tokens.css). Edit a base
+color there and every solid and transparent shade follows. `scripts/check-colors.sh` fails if a
+color is written anywhere else under `ui/`. If you change the dark `--c-velvet`, also change
+`backgroundColor` in `src-tauri/tauri.conf.json`.
+
 ## Getting a TMDB API key
 
 1. Create a free account at <https://www.themoviedb.org>.

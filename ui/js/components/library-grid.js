@@ -3,18 +3,19 @@
 import { api } from '../api.js';
 import { button, h } from '../dom.js';
 import { state } from '../state.js';
+import { rememberLibraryStart } from './poster-card.js';
 import { posterGrid } from './poster-grid.js';
 
 const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
 
 const SORTS = {
+  added: { label: 'Recently added', compare: (a, b) => b.added_at - a.added_at || byTitle(a, b) },
   title: { label: 'Title', compare: byTitle },
-  year: { label: 'Year', compare: (a, b) => (b.year ?? 0) - (a.year ?? 0) || byTitle(a, b) },
+  year: { label: 'Newest first', compare: (a, b) => (b.year ?? 0) - (a.year ?? 0) || byTitle(a, b) },
   rating: {
-    label: 'Rating',
+    label: 'Highest rated',
     compare: (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || byTitle(a, b),
   },
-  added: { label: 'Recently added', compare: (a, b) => b.added_at - a.added_at || byTitle(a, b) },
 };
 
 const WATCHED = [
@@ -24,57 +25,81 @@ const WATCHED = [
 ];
 
 export function libraryView(kind, heading) {
+  const noun = kind === 'movie' ? 'movie' : 'show';
+  const plural = (count) => `${count} ${noun}${count === 1 ? '' : 's'}`;
   return {
-    load: async () => (await api.listTitles()).filter((t) => t.kind === kind),
+    load: async () => {
+      const titles = await api.listTitles();
+      rememberLibraryStart(titles);
+      return titles.filter((t) => t.kind === kind);
+    },
     build(data, ctx) {
       let titles = data;
       const prefs = state.gridPrefs[kind];
       const grid = posterGrid(ctx, kind);
-      const count = h('span', { class: 'count' });
+      const count = h('p', { class: 'page-count', 'aria-live': 'polite' });
       const empty = h('div', { class: 'empty' });
 
-      const select = (name, label, onChange) => {
-        const el = h('select', {
-          dataset: { focusKey: `filter:${name}` },
-          onChange: () => {
-            prefs[name] = el.value;
-            onChange();
-          },
-        });
-        return [el, h('label', { class: 'field-inline' }, h('span', { text: label }), el)];
-      };
-      const apply = () => {
+      const apply = (changes) => {
+        Object.assign(prefs, changes);
         document.getElementById('app').scrollTop = 0;
         render(true);
       };
-      const [sortSelect, sortField] = select('sort', 'Sort', apply);
-      const [genreSelect, genreField] = select('genre', 'Genre', apply);
-      const [watchedSelect, watchedField] = select('watched', 'Show', apply);
+      const toggle = (className, value, label, focus, onClick) =>
+        h('button', {
+          type: 'button',
+          class: className,
+          text: label,
+          dataset: { value, focusKey: `filter:${focus}:${value}` },
+          onClick,
+        });
 
-      const setOptions = (el, options, value) => {
-        const key = JSON.stringify(options);
-        // Rebuilding the options would close an open menu.
-        if (el.dataset.options !== key) {
-          el.dataset.options = key;
-          el.replaceChildren(...options.map(([v, text]) => h('option', { value: v, text })));
+      const watched = h(
+        'div',
+        { class: 'seg', role: 'group', 'aria-label': 'Filter by watched' },
+        WATCHED.map(([value, label]) =>
+          toggle('', value, label, 'watched', () => apply({ watched: value })),
+        ),
+      );
+      const sort = h(
+        'select',
+        {
+          class: 'select',
+          'aria-label': 'Sort by',
+          dataset: { focusKey: 'filter:sort' },
+          onChange: () => apply({ sort: sort.value }),
+        },
+        Object.entries(SORTS).map(([value, { label }]) => h('option', { value, text: label })),
+      );
+      const genres = h('div', { class: 'chips', role: 'group', 'aria-label': 'Genre' });
+      let genreList = null;
+
+      function renderGenres() {
+        const names = [...new Set(titles.flatMap((t) => t.genres))].sort();
+        if (prefs.genre && !names.includes(prefs.genre)) names.push(prefs.genre);
+        const key = JSON.stringify(names);
+        // Rebuilding the chips would drop the focus.
+        if (key !== genreList) {
+          genreList = key;
+          const chip = (value, label) =>
+            toggle('chip', value, label, 'genre', () => apply({ genre: value }));
+          genres.replaceChildren(
+            ...(names.length ? [chip('', 'All'), ...names.map((g) => chip(g, g))] : []),
+          );
         }
-        el.value = value;
+      }
+
+      const press = (group, value) => {
+        for (const el of group.children) {
+          el.setAttribute('aria-pressed', String(el.dataset.value === value));
+        }
       };
 
       function render(reset) {
-        const genres = [...new Set(titles.flatMap((t) => t.genres))].sort();
-        if (prefs.genre && !genres.includes(prefs.genre)) genres.push(prefs.genre);
-        setOptions(
-          sortSelect,
-          Object.entries(SORTS).map(([value, sort]) => [value, sort.label]),
-          prefs.sort,
-        );
-        setOptions(
-          genreSelect,
-          [['', 'All genres'], ...genres.map((g) => [g, g])],
-          prefs.genre,
-        );
-        setOptions(watchedSelect, WATCHED, prefs.watched);
+        renderGenres();
+        press(genres, prefs.genre);
+        press(watched, prefs.watched);
+        sort.value = prefs.sort;
 
         const shown = titles
           .filter((t) => !prefs.genre || t.genres.includes(prefs.genre))
@@ -85,22 +110,19 @@ export function libraryView(kind, heading) {
 
         count.textContent =
           shown.length === titles.length
-            ? `${titles.length}`
-            : `${shown.length} of ${titles.length}`;
+            ? `${plural(titles.length)} in your library`
+            : `${shown.length} of ${plural(titles.length)}`;
         empty.hidden = shown.length > 0;
         empty.replaceChildren();
         if (!titles.length) {
-          empty.append(
-            h('p', { text: `No ${heading.toLowerCase()} found in your media folder yet.` }),
-          );
+          empty.append(h('p', { text: `No ${noun}s found in your media folder yet.` }));
         } else if (!shown.length) {
           empty.append(
-            h('p', { text: 'Nothing matches these filters.' }),
-            button('Clear filters', {
-              onClick: () => {
-                Object.assign(prefs, { genre: '', watched: 'all' });
-                render(true);
-              },
+            h('h2', { text: `No ${noun}s match these filters` }),
+            h('p', { text: `Try another genre, or show all ${noun}s.` }),
+            button(`Show all ${noun}s`, {
+              variant: 'btn-sm',
+              onClick: () => apply({ genre: '', watched: 'all' }),
             }),
           );
         }
@@ -112,9 +134,10 @@ export function libraryView(kind, heading) {
         h(
           'div',
           { class: 'page-head' },
-          h('h1', {}, heading, ' ', count),
-          h('div', { class: 'toolbar' }, sortField, genreField, watchedField),
+          h('div', {}, h('h1', { class: 'page-title', text: heading }), count),
+          watched,
         ),
+        h('div', { class: 'toolbar' }, h('span', { class: 'select-wrap' }, sort), genres),
         empty,
         grid.el,
       );

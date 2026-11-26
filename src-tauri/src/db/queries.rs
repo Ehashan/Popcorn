@@ -1,5 +1,6 @@
 //! The read queries behind the UI.
 
+use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
@@ -7,7 +8,7 @@ use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
-use crate::library::search::Document;
+use crate::library::search::{matches_text, Document};
 use crate::progress::{self, Progress};
 use crate::tmdb::metadata::{CastMember, Metadata};
 
@@ -463,6 +464,67 @@ pub fn title_file_ids(conn: &Connection, title_id: i64) -> AppResult<Vec<i64>> {
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
+const EPISODE_RESULTS: usize = 12;
+
+/// Episodes on disk whose name matches the query, ready to be played.
+pub fn search_episodes(conn: &Connection, query: &str) -> AppResult<Vec<ContinueItem>> {
+    let mut statement = conn.prepare(
+        "SELECT m.title_id, m.season, m.episode, m.name FROM episode_meta m
+         JOIN titles t ON t.id = m.title_id
+         WHERE m.name IS NOT NULL
+         ORDER BY t.guessed_title COLLATE NOCASE, m.season, m.episode",
+    )?;
+    let named = statement
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
+        .collect::<Result<Vec<(i64, u32, u32, String)>, _>>()?;
+
+    let mut shows: HashMap<i64, TitleDetails> = HashMap::new();
+    let mut hits = Vec::new();
+    for (title_id, season, number, name) in named {
+        if hits.len() == EPISODE_RESULTS {
+            break;
+        }
+        if !matches_text(query, &name) {
+            continue;
+        }
+        let details = match shows.entry(title_id) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            // A show with no files left on disk has no details.
+            Entry::Vacant(entry) => match title_details(conn, title_id) {
+                Ok(details) => entry.insert(details),
+                Err(AppError::NotFound) => continue,
+                Err(error) => return Err(error),
+            },
+        };
+        let found = details
+            .seasons
+            .iter()
+            .flat_map(|s| &s.episodes)
+            .find(|e| (e.season, e.episode) == (season, number));
+        if let Some(episode) = found {
+            let file = &episode.file;
+            hits.push(ContinueItem {
+                title_id,
+                file_id: episode.file_id,
+                kind: details.summary.kind.clone(),
+                title: details.summary.title.clone(),
+                season: Some(season),
+                episode: Some(number),
+                episode_name: episode.name.clone(),
+                position: progress::resume_position(file.position, file.duration).unwrap_or(0.0),
+                duration: file.duration,
+                poster_path: details.summary.poster_path.clone(),
+                backdrop_path: details.summary.backdrop_path.clone(),
+                still_path: episode.still_path.clone(),
+                updated_at: file.updated_at,
+            });
+        }
+    }
+    Ok(hits)
+}
+
 pub fn search_documents(conn: &Connection) -> AppResult<Vec<Document>> {
     let mut episode_names: HashMap<i64, Vec<String>> = HashMap::new();
     let mut statement = conn.prepare(
@@ -535,6 +597,19 @@ mod tests {
         let playing = playback_item(&conn, 11).unwrap();
         assert_eq!(playing.next.map(|n| n.file_id), Some(12));
         assert_eq!(title_details(&conn, 1).unwrap().seasons.len(), 2);
+    }
+
+    #[test]
+    fn episode_search_only_returns_files_on_disk() {
+        let conn = library();
+        conn.execute_batch(
+            "INSERT INTO episode_meta (title_id, season, episode, name) VALUES
+               (1, 1, 2, 'Lies'), (1, 9, 9, 'Lies, gone'), (1, 2, 1, 'Beginnings');",
+        )
+        .unwrap();
+        let hits = search_episodes(&conn, "lie").unwrap();
+        assert_eq!(hits.iter().map(|h| h.file_id).collect::<Vec<_>>(), [11]);
+        assert!(search_episodes(&conn, "  ").unwrap().is_empty());
     }
 
     #[test]

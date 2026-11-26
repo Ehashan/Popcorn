@@ -1,6 +1,7 @@
 import { api, errorMessage } from '../api.js';
 import { button, h } from '../dom.js';
 import { state } from '../state.js';
+import { currentTheme, setTheme, THEME_CHANGED } from '../theme.js';
 import { attempt, toast } from '../components/toast.js';
 import { keyField } from '../components/key-field.js';
 
@@ -8,37 +9,83 @@ const ATTRIBUTION = 'This product uses the TMDB API but is not endorsed or certi
 
 /**
  * TMDB LOGO SLOT.
- * The attribution requires the official TMDB logo. It is not shipped or drawn
- * here: download the approved asset from themoviedb.org (About > Logos and
- * Attribution) and save it as ui/img/tmdb-logo.svg. It stays hidden until that
- * file loads.
+ * TMDB's attribution rules ask for their official logo. It is not shipped or
+ * drawn here: download the approved asset from themoviedb.org (About > Logos
+ * and Attribution) and save it as ui/img/tmdb-logo.svg. Until that file loads,
+ * a plain text badge is shown.
  */
 function tmdbLogo() {
-  const logo = h('img', { class: 'tmdb-logo', alt: 'TMDB logo', hidden: true });
-  logo.addEventListener('load', () => {
-    logo.hidden = false;
-  });
-  logo.addEventListener('error', () => logo.remove());
+  const badge = h('span', { class: 'tmdb-mark', text: 'TMDB' });
+  const logo = h('img', { class: 'tmdb-logo', alt: 'TMDB logo' });
+  logo.addEventListener('load', () => badge.replaceWith(logo));
   logo.src = 'img/tmdb-logo.svg';
-  return logo;
+  return badge;
 }
 
-const section = (title, ...children) =>
-  h('section', { class: 'settings-section' }, h('h2', { text: title }), children);
+const group = (title, ...children) =>
+  h('section', { class: 'set-group' }, h('h2', { text: title }), children);
+
+/** A labelled row with its controls on the right. */
+function setting(label, note, ...controls) {
+  const text = typeof note === 'string' ? h('span', { class: 'set-note', text: note }) : note;
+  return h(
+    'div',
+    { class: 'set-row' },
+    h('div', { class: 'set-text' }, h('b', { text: label }), text),
+    h('div', { class: 'set-controls' }, controls),
+  );
+}
+
+function scannedNote() {
+  const when = state.lastScan?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return [
+    when && `Last scanned at ${when}.`,
+    'New files are added automatically while Popcorn is open.',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** The Dark / Light switch. `destroy` stops it following the header button. */
+function themePicker() {
+  const choices = ['dark', 'light'].map((theme) =>
+    h('button', {
+      type: 'button',
+      text: theme === 'dark' ? 'Dark' : 'Light',
+      dataset: { value: theme, focusKey: `settings:theme-${theme}` },
+      onClick: () => setTheme(theme),
+    }),
+  );
+  const paint = () => {
+    for (const choice of choices) {
+      choice.setAttribute('aria-pressed', String(choice.dataset.value === currentTheme()));
+    }
+  };
+  window.addEventListener(THEME_CHANGED, paint);
+  paint();
+  return {
+    el: h('div', { class: 'seg', role: 'group', 'aria-label': 'Theme' }, choices),
+    destroy: () => window.removeEventListener(THEME_CHANGED, paint),
+  };
+}
 
 export default {
   load: () => api.getSettings(),
   build(settings, ctx) {
-    const folder = h('p', { class: 'path' });
-    const keyStatus = h('p', { class: 'muted' });
+    const folder = h('span', { class: 'path' });
+    const keyNote = h('span', { class: 'set-note' });
+    const scanNote = h('span', { class: 'set-note' });
+    const theme = themePicker();
 
     const show = (next) => {
       state.settings = next;
       folder.textContent = next.media_folder ?? 'No folder chosen';
-      keyStatus.textContent = next.has_tmdb_key
-        ? 'A key is saved. Enter a new one to replace it.'
-        : 'No key saved. Posters and details need a free TMDB key.';
+      keyNote.textContent = [
+        'Used to download posters, cast and descriptions.',
+        next.has_tmdb_key ? 'A key is saved. Paste a new one to replace it.' : 'No key is saved.',
+      ].join(' ');
       removeKey.hidden = !next.has_tmdb_key;
+      scanNote.textContent = scannedNote();
     };
     const reload = async () => show(await api.getSettings());
 
@@ -48,7 +95,7 @@ export default {
       hasSavedKey: () => state.settings.has_tmdb_key,
     });
     const save = button('Save key', {
-      variant: 'btn-primary',
+      variant: 'btn-play btn-sm',
       dataset: { focusKey: 'settings:save-key' },
       onClick: async () => {
         const value = key.value();
@@ -67,6 +114,7 @@ export default {
       },
     });
     const removeKey = button('Remove key', {
+      variant: 'btn-quiet btn-sm',
       dataset: { focusKey: 'settings:remove-key' },
       onClick: async () => {
         if (await attempt(() => api.setTmdbKey(''), 'TMDB key removed.')) {
@@ -75,11 +123,12 @@ export default {
         }
       },
     });
-    key.actions.prepend(save);
-    key.actions.append(removeKey);
+    key.actions.append(save, removeKey);
 
-    const action = (label, focus, run, success) => {
+    const action = (label, focus, run, success, props = {}) => {
       const el = button(label, {
+        variant: 'btn-sm',
+        ...props,
         dataset: { focusKey: `settings:${focus}` },
         onClick: async () => {
           el.disabled = true;
@@ -92,83 +141,105 @@ export default {
     const link = (label, target) =>
       h('button', {
         type: 'button',
-        class: 'link',
+        class: 'link link-accent',
         text: label,
         dataset: { focusKey: `settings:link-${target}` },
         onClick: () => attempt(() => api.openExternal(target)),
       });
 
+    const changeFolder = button('Change folder', {
+      icon: 'folder',
+      variant: 'btn-sm',
+      dataset: { focusKey: 'settings:folder' },
+      onClick: async () => {
+        try {
+          if (await api.pickMediaFolder()) {
+            await reload();
+            toast('Media folder changed. Scanning…');
+          }
+        } catch (error) {
+          toast(errorMessage(error), { error: true });
+        }
+      },
+    });
+
     const el = h(
       'div',
-      { class: 'page settings' },
-      h('h1', { text: 'Settings' }),
-      section(
-        'Media folder',
-        folder,
-        h(
-          'div',
-          { class: 'actions' },
-          button('Change folder…', {
-            dataset: { focusKey: 'settings:folder' },
-            onClick: async () => {
-              try {
-                if (await api.pickMediaFolder()) {
-                  await reload();
-                  toast('Folder changed. Scanning…');
-                }
-              } catch (error) {
-                toast(errorMessage(error), { error: true });
-              }
-            },
-          }),
-          action('Rescan now', 'rescan', () => api.rescan(), 'Rescan started.'),
+      { class: 'page' },
+      h(
+        'div',
+        { class: 'settings' },
+        h('h1', { class: 'page-title', text: 'Settings' }),
+        group('Appearance', setting('Theme', 'The video player always stays dark.', theme.el)),
+        group(
+          'Library',
+          setting('Media folder', folder, changeFolder),
+          setting(
+            'Rescan library',
+            scanNote,
+            action('Rescan now', 'rescan', () => api.rescan(), 'Rescan started.', {
+              icon: 'refresh',
+            }),
+          ),
         ),
-      ),
-      section(
-        'TMDB API key',
-        keyStatus,
-        key.el,
-        h('p', {}, link('How to get a free TMDB API key', 'tmdb_api')),
-      ),
-      section(
-        'Metadata',
-        h(
-          'div',
-          { class: 'actions' },
-          action(
+        group(
+          'TMDB',
+          h(
+            'div',
+            { class: 'set-row stacked' },
+            h('b', { text: 'API key' }),
+            keyNote,
+            key.el,
+            link('Get a free TMDB API key', 'tmdb_api'),
+          ),
+          setting(
             'Refresh all metadata',
-            'refresh-all',
-            () => api.refreshAllMetadata(),
-            'Refreshing metadata in the background.',
+            'Download details and artwork again for every title. Titles you fixed by hand keep their match.',
+            action(
+              'Refresh',
+              'refresh-all',
+              () => api.refreshAllMetadata(),
+              'Refreshing metadata in the background.',
+              { icon: 'refresh' },
+            ),
           ),
-          action(
-            'Clear image cache',
-            'clear-cache',
-            () => api.clearImageCache(),
-            'Image cache cleared. Images will download again.',
+          setting(
+            'Image cache',
+            'Posters and backdrops stored on this Mac.',
+            action(
+              'Clear image cache',
+              'clear-cache',
+              () => api.clearImageCache(),
+              'Image cache cleared. Images will download again.',
+              { variant: 'btn-quiet btn-sm' },
+            ),
           ),
         ),
-      ),
-      section(
-        'About',
-        h('p', { text: `Popcorn ${state.version}`.trim() }),
-        h('p', {
-          class: 'muted',
-          text: 'Free software, licensed under the GNU General Public License v3.0 (GPL-3.0).',
-        }),
-        h('p', {}, link('Popcorn on GitHub', 'github')),
-        h(
-          'div',
-          { class: 'attribution' },
-          tmdbLogo(),
-          h('p', { text: ATTRIBUTION }),
-          link('themoviedb.org', 'tmdb'),
+        group(
+          'About',
+          setting(
+            `Popcorn ${state.version}`.trim(),
+            'Free and open source under GPL-3.0. Playback by mpv.',
+            link('Popcorn on GitHub', 'github'),
+            button('Show welcome screen', {
+              variant: 'btn-quiet btn-sm',
+              dataset: { focusKey: 'settings:welcome' },
+              onClick: () => ctx.navigate('onboarding'),
+            }),
+          ),
+          h(
+            'div',
+            { class: 'attribution' },
+            tmdbLogo(),
+            h('span', { text: ATTRIBUTION }),
+            link('themoviedb.org', 'tmdb'),
+          ),
         ),
       ),
     );
     show(settings);
 
     // Updated in place so that a half-typed key survives library refreshes.
-    return { el, update: show };
+    return { el, update: show, destroy: theme.destroy };
   },
 };

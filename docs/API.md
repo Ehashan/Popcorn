@@ -21,6 +21,7 @@ structs in `src-tauri/src/db/queries.rs`, which is the source of truth.
 | `get_title` | `id` | `TitleDetails` (all `TitleSummary` fields plus details, `files`, `seasons`, `play`) |
 | `continue_watching` | | `ContinueItem[]`, newest first. `position` is 0 for a not-yet-started next episode |
 | `search_library` | `query` | title ids, best first |
+| `search_episodes` | `query` | up to 12 `ContinueItem`s whose episode name matches |
 | `set_watched` | `fileId, watched` | |
 | `set_title_watched` | `titleId, watched` | |
 | `reveal_file` | `fileId` | |

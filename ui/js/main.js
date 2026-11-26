@@ -3,6 +3,7 @@
 import { api, errorMessage, listen } from './api.js';
 import { button, h, icon } from './dom.js';
 import { state } from './state.js';
+import { currentTheme, syncWindowTheme, THEME_CHANGED, toggleTheme } from './theme.js';
 import { moveFocus } from './components/keyboard-nav.js';
 import { scanStatus } from './components/scan-status.js';
 import { toastError } from './components/toast.js';
@@ -36,7 +37,7 @@ const DEBOUNCE_MAX_MS = 2000;
 
 const app = document.getElementById('app');
 const topbar = document.getElementById('topbar');
-const backButton = document.getElementById('back');
+const searchInput = document.getElementById('search');
 
 /** The entry whose screen is in the page, which lags behind while loading. */
 let shown = null;
@@ -48,13 +49,14 @@ const entry = (name, params = {}) => ({ name, params, ui: {}, snapshot: null });
 const context = (ui) => ({
   ui,
   navigate,
+  back,
   openTitle: ({ id, kind }) => navigate(kind === 'show' ? 'show' : 'movie', { id }),
   play: openPlayer,
   refresh,
   start,
 });
 
-function navigate(name, params = {}) {
+function navigate(name, params = {}, ui = {}) {
   const top = current();
   if (top?.name === name && top.params.id === params.id) {
     app.scrollTo({ top: 0, behavior: 'smooth' });
@@ -63,7 +65,7 @@ function navigate(name, params = {}) {
   }
   // Remember the screen being left before anything changes.
   if (shown) shown.entry.snapshot = takeSnapshot();
-  state.history.push(entry(name, params));
+  state.history.push({ ...entry(name, params), ui });
   if (state.history.length > HISTORY_LIMIT) state.history.shift();
   render();
 }
@@ -98,7 +100,8 @@ function restore({ scroll, focusKey, rows }) {
     if (el) el.scrollLeft = left;
   }
   app.scrollTop = scroll;
-  if (focusKey && !document.querySelector('dialog[open]') && !playerActive()) {
+  const typing = document.activeElement === searchInput;
+  if (focusKey && !typing && !document.querySelector('dialog[open]') && !playerActive()) {
     app.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`)?.focus({
       preventScroll: true,
     });
@@ -119,7 +122,8 @@ async function mount(target, data, saved) {
   } else {
     app.scrollTop = 0;
     onScroll();
-    if (playerActive()) return;
+    // Typing in the header search must not lose the focus.
+    if (playerActive() || document.activeElement === searchInput) return;
     const autofocus = app.querySelector('[data-autofocus]');
     (autofocus ?? app).focus({ preventScroll: true });
   }
@@ -164,7 +168,7 @@ function showFailure(error, retry) {
         { class: 'empty empty-large' },
         h('h1', { text: 'Could not load this screen' }),
         h('p', { text: errorMessage(error) }),
-        button('Try again', { variant: 'btn-primary', onClick: retry }),
+        button('Try again', { variant: 'btn-play', onClick: retry }),
       ),
     ),
   );
@@ -223,18 +227,71 @@ function libraryUpdated() {
   }, wait);
 }
 
+/** Screens whose artwork runs underneath a see-through header. */
+const IMMERSIVE = new Set(['home', 'movie', 'show']);
+
 function updateChrome() {
   const name = current()?.name;
   topbar.classList.toggle('minimal', !name || name === 'onboarding');
-  backButton.disabled = state.history.length < 2;
-  for (const tab of topbar.querySelectorAll('[data-route]')) {
+  if (name === 'search') searchInput.value = current().ui.query ?? '';
+  else if (document.activeElement !== searchInput) searchInput.value = '';
+  onScroll();
+  for (const tab of topbar.querySelectorAll('[data-route]:not(.brand)')) {
     if (tab.dataset.route === name) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
 }
 
 function onScroll() {
-  topbar.classList.toggle('scrolled', app.scrollTop > 8);
+  const name = current()?.name;
+  const bare = !name || name === 'onboarding';
+  topbar.classList.toggle('solid', !bare && (!IMMERSIVE.has(name) || app.scrollTop > 40));
+}
+
+function focusSearch() {
+  searchInput.focus();
+  searchInput.select();
+}
+
+function onSearchInput() {
+  const query = searchInput.value;
+  if (current()?.name !== 'search') {
+    if (query.trim()) navigate('search', {}, { query });
+    return;
+  }
+  if (!query) {
+    back();
+    return;
+  }
+  current().ui.query = query;
+  // While the screen is still loading, it will read the query itself.
+  if (shown?.entry === current()) shown.view.search(query);
+}
+
+function onSearchKey(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    searchInput.value = '';
+    searchInput.blur();
+    if (current()?.name === 'search') back();
+  } else if (event.key === 'ArrowDown' || event.key === 'Enter') {
+    const first = app.querySelector('[data-nav-item]');
+    if (first && current()?.name === 'search') {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+}
+
+/** Left and right turn the featured carousel when no row card has the focus. */
+function stepHero(event) {
+  const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+  if (!step || !shown?.view.heroStep || app.scrollTop > 300) return false;
+  if (event.target.closest('.scroller, .header')) return false;
+  event.preventDefault();
+  shown.view.heroStep(step);
+  return true;
 }
 
 function onKeyDown(event) {
@@ -248,15 +305,19 @@ function onKeyDown(event) {
   if (event.metaKey && event.key === '[') {
     event.preventDefault();
     back();
-  } else if (event.metaKey && event.key === 'f' && !onboardingScreen) {
+  } else if (
+    !onboardingScreen &&
+    (((event.metaKey || event.ctrlKey) && ['k', 'f'].includes(event.key.toLowerCase())) ||
+      (event.key === '/' && !event.target.matches('input, select')))
+  ) {
     event.preventDefault();
-    navigate('search');
+    focusSearch();
   } else if (event.metaKey || event.ctrlKey || event.altKey) {
     return;
   } else if (event.key === 'Escape') {
     event.preventDefault();
     if (!event.repeat) back();
-  } else if (!event.target.matches('input, select')) {
+  } else if (!event.target.matches('input, select') && !stepHero(event)) {
     moveFocus(event);
   }
 }
@@ -266,13 +327,27 @@ function onKeyUp(event) {
   if (playerActive() && event.key === ' ') event.preventDefault();
 }
 
+/** The header button shows the theme it switches to. */
+function paintThemeToggle() {
+  const dark = currentTheme() === 'dark';
+  const toggle = document.getElementById('theme-toggle');
+  const label = `Switch to ${dark ? 'light' : 'dark'} theme`;
+  toggle.replaceChildren(icon(dark ? 'sun' : 'moon'));
+  toggle.setAttribute('aria-label', label);
+  toggle.title = label;
+}
+
 function initChrome() {
-  backButton.append(icon('back'));
-  backButton.addEventListener('click', back);
-  for (const tab of topbar.querySelectorAll('[data-route]')) {
-    if (tab.dataset.icon) tab.prepend(icon(tab.dataset.icon));
-    tab.addEventListener('click', () => navigate(tab.dataset.route));
+  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+  window.addEventListener(THEME_CHANGED, paintThemeToggle);
+  paintThemeToggle();
+  for (const control of topbar.querySelectorAll('[data-route]')) {
+    if (control.dataset.icon) control.prepend(icon(control.dataset.icon));
+    control.addEventListener('click', () => navigate(control.dataset.route));
   }
+  document.getElementById('search-box').prepend(icon('search'));
+  searchInput.addEventListener('input', onSearchInput);
+  searchInput.addEventListener('keydown', onSearchKey);
   app.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
@@ -286,6 +361,8 @@ async function boot() {
     );
     return;
   }
+  document.documentElement.classList.add('tauri');
+  syncWindowTheme();
   try {
     const onScan = scanStatus();
     await Promise.all([
