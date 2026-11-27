@@ -1,0 +1,80 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      TAURI_CLI_VERSION: "2.12.6"
+      MPV_WINBUILD_TAG: "20261111"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy --target x86_64-pc-windows-msvc
+          rustup default stable
+
+      - name: Cache libmpv
+        id: cache-libmpv
+        uses: actions/cache@v6
+        with:
+          path: build/windows
+          key: libmpv-windows-x64-${{ env.MPV_WINBUILD_TAG }}
+
+      - name: Download libmpv-2.dll
+        if: steps.cache-libmpv.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path build/windows | Out-Null
+          gh release download "${{ env.MPV_WINBUILD_TAG }}" -R shinchiro/mpv-winbuild-cmake -p "mpv-dev-x86_64-${{ env.MPV_WINBUILD_TAG }}-*.7z" -D build/windows
+          $archive = Get-ChildItem build/windows/mpv-dev-x86_64-*.7z | Select-Object -First 1
+          if (-not $archive) { throw "No mpv-dev archive downloaded" }
+          7z e $archive.FullName "libmpv-2.dll" -o"build/windows" -y
+          if (-not (Test-Path "build/windows/libmpv-2.dll")) { throw "libmpv-2.dll not found in archive" }
+          Remove-Item $archive.FullName
+
+      - name: Cache tauri-cli
+        id: tauri-cli
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.TAURI_CLI_VERSION }}
+
+      - name: Install tauri-cli
+        if: steps.tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "=${{ env.TAURI_CLI_VERSION }}" --locked
+
+      - name: Format, lint, test
+        working-directory: src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+
+      - name: Build Windows installers
+        run: cargo tauri build --config src-tauri/tauri.windows.conf.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Popcorn-windows
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error

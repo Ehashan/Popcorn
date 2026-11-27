@@ -89,6 +89,7 @@ impl Mpv {
         Ok(Arc::new(mpv))
     }
 
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn api(&self) -> &'static Api {
         self.api
     }

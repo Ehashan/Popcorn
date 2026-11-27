@@ -115,18 +115,41 @@ mod tests {
         KeyAction::Forward(name.to_owned())
     }
 
+    #[cfg(not(target_os = "windows"))]
+    const SPACE_KEY: u16 = 49;
+    #[cfg(target_os = "windows")]
+    const SPACE_KEY: u16 = 0x20;
+
+    #[cfg(not(target_os = "windows"))]
+    const LEFT_KEY: u16 = 123;
+    #[cfg(target_os = "windows")]
+    const LEFT_KEY: u16 = 0x25;
+
+    #[cfg(not(target_os = "windows"))]
+    const ESC_KEY: u16 = 53;
+    #[cfg(target_os = "windows")]
+    const ESC_KEY: u16 = 0x1B;
+
+    #[cfg(not(target_os = "windows"))]
+    const M_KEY: u16 = 46;
+    #[cfg(target_os = "windows")]
+    const M_KEY: u16 = 0x4D;
+
     #[test]
     fn special_and_printable_keys() {
-        assert_eq!(key_action(49, " ", 0), forward("SPACE"));
-        assert_eq!(key_action(123, "\u{f702}", SHIFT), forward("Shift+LEFT"));
-        assert_eq!(key_action(46, "m", 0), forward("m"));
+        assert_eq!(key_action(SPACE_KEY, " ", 0), forward("SPACE"));
+        assert_eq!(
+            key_action(LEFT_KEY, "\u{f702}", SHIFT),
+            forward("Shift+LEFT")
+        );
+        assert_eq!(key_action(M_KEY, "m", 0), forward("m"));
         assert_eq!(key_action(20, "#", SHIFT), forward("SHARP"));
         assert_eq!(key_action(122, "\u{f704}", 0), KeyAction::Ignore);
     }
 
     #[test]
     fn dangerous_defaults_are_intercepted() {
-        assert_eq!(key_action(53, "\u{1b}", 0), KeyAction::Close);
+        assert_eq!(key_action(ESC_KEY, "\u{1b}", 0), KeyAction::Close);
         assert_eq!(key_action(12, "q", 0), KeyAction::Close);
         assert_eq!(key_action(12, "Q", SHIFT), KeyAction::Close);
         assert_eq!(key_action(1, "s", 0), KeyAction::Ignore);

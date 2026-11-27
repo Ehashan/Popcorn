@@ -3,7 +3,9 @@
 //! There is no link-time dependency on libmpv, so the app builds without it.
 //! Types and constants follow `mpv/client.h`, `render.h` and `render_gl.h`.
 
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+#[cfg(not(target_os = "windows"))]
+use std::ffi::CString;
+use std::ffi::{c_char, c_int, c_void, CStr};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -69,6 +71,7 @@ pub struct RenderParam {
     pub data: *mut c_void,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[repr(C)]
 pub struct OpenGlInitParams {
     pub get_proc_address:
@@ -76,6 +79,7 @@ pub struct OpenGlInitParams {
     pub get_proc_address_ctx: *mut c_void,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[repr(C)]
 pub struct OpenGlFbo {
     pub fbo: c_int,
@@ -84,13 +88,21 @@ pub struct OpenGlFbo {
     pub internal_format: c_int,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_PARAM_INVALID: c_int = 0;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_PARAM_API_TYPE: c_int = 1;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_PARAM_OPENGL_INIT_PARAMS: c_int = 2;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_PARAM_OPENGL_FBO: c_int = 3;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_PARAM_FLIP_Y: c_int = 4;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_PARAM_BLOCK_FOR_TARGET_TIME: c_int = 12;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_PARAM_SKIP_RENDERING: c_int = 13;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const RENDER_API_TYPE_OPENGL: &CStr = c"opengl";
 
 pub type UpdateCallback = unsafe extern "C" fn(context: *mut c_void);
@@ -98,6 +110,7 @@ pub type UpdateCallback = unsafe extern "C" fn(context: *mut c_void);
 macro_rules! api {
     ($($name:ident: fn($($arg:ty),*) $(-> $ret:ty)?;)*) => {
         /// The resolved entry points.
+        #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
         pub struct Api {
             $(pub $name: unsafe extern "C" fn($($arg),*) $(-> $ret)?,)*
         }
