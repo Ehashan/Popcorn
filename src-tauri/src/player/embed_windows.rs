@@ -43,6 +43,7 @@ const WM_DESTROY: u32 = 0x0002;
 const WM_SIZE: u32 = 0x0005;
 const WM_CLOSE: u32 = 0x0010;
 const WM_QUIT: u32 = 0x0012;
+const WM_ERASEBKGND: u32 = 0x0014;
 const WM_NCDESTROY: u32 = 0x0082;
 const WM_NCLBUTTONDOWN: u32 = 0x00A1;
 const WM_KEYDOWN: u32 = 0x0100;
@@ -117,8 +118,7 @@ struct Msg {
     pt_y: i32,
 }
 
-type SubclassProc =
-    unsafe extern "system" fn(Hwnd, u32, Wparam, Lparam, usize, usize) -> Lresult;
+type SubclassProc = unsafe extern "system" fn(Hwnd, u32, Wparam, Lparam, usize, usize) -> Lresult;
 
 #[link(name = "kernel32")]
 extern "system" {
@@ -139,11 +139,7 @@ extern "system" {
         uIdSubclass: usize,
         dwRefData: usize,
     ) -> c_int;
-    fn RemoveWindowSubclass(
-        hWnd: Hwnd,
-        pfnSubclass: SubclassProc,
-        uIdSubclass: usize,
-    ) -> c_int;
+    fn RemoveWindowSubclass(hWnd: Hwnd, pfnSubclass: SubclassProc, uIdSubclass: usize) -> c_int;
     fn DefSubclassProc(hWnd: Hwnd, uMsg: u32, wParam: Wparam, lParam: Lparam) -> Lresult;
 }
 
@@ -325,6 +321,15 @@ fn set_fullscreen_hwnd(hwnd: Hwnd, data: &WindowData, fullscreen: bool) {
     }
 }
 
+unsafe extern "system" fn embedded_wnd_proc(
+    hwnd: Hwnd,
+    msg: u32,
+    w_param: Wparam,
+    l_param: Lparam,
+) -> Lresult {
+    DefWindowProcW(hwnd, msg, w_param, l_param)
+}
+
 unsafe extern "system" fn parent_subclass_proc(
     hwnd: Hwnd,
     msg: u32,
@@ -333,6 +338,9 @@ unsafe extern "system" fn parent_subclass_proc(
     _uid: usize,
     child_hwnd: usize,
 ) -> Lresult {
+    if msg == WM_ERASEBKGND {
+        return 1;
+    }
     if msg == WM_SIZE {
         let mut rect = Rect::default();
         if GetClientRect(hwnd, &mut rect) != 0 {
@@ -429,11 +437,27 @@ impl VideoSurface {
             // Make WebView2's background transparent so the child HWND shows through.
             let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
 
-            let class_name = wide("STATIC");
+            let class_name = wide("PopcornEmbeddedVideo");
             let title = wide("PopcornVideo");
             // SAFETY: creating a child HWND inside `parent_hwnd` on the main thread.
             let child_hwnd = unsafe {
                 let h_instance = GetModuleHandleW(null());
+                let wc = WndClassExW {
+                    cb_size: std::mem::size_of::<WndClassExW>() as u32,
+                    style: CS_HREDRAW | CS_VREDRAW,
+                    lpfn_wnd_proc: embedded_wnd_proc,
+                    cb_cls_extra: 0,
+                    cb_wnd_extra: 0,
+                    h_instance,
+                    h_icon: 0,
+                    h_cursor: LoadCursorW(0, IDC_ARROW as *const u16),
+                    h_br_background: GetStockObject(BLACK_BRUSH),
+                    lpsz_menu_name: null(),
+                    lpsz_class_name: class_name.as_ptr(),
+                    h_icon_sm: 0,
+                };
+                RegisterClassExW(&wc);
+
                 let mut rect = Rect::default();
                 GetClientRect(parent_hwnd, &mut rect);
                 let child = CreateWindowExW(
@@ -451,8 +475,11 @@ impl VideoSurface {
                     null_mut(),
                 );
                 if child == 0 {
-                    let _ = window.set_background_color(Some(tauri::window::Color(0x10, 0x10, 0x11, 0xff)));
-                    return Err(AppError::Player("could not create embedded video surface".into()));
+                    let _ = window
+                        .set_background_color(Some(tauri::window::Color(0x10, 0x10, 0x11, 0xff)));
+                    return Err(AppError::Player(
+                        "could not create embedded video surface".into(),
+                    ));
                 }
                 SetWindowPos(
                     child,
@@ -463,7 +490,12 @@ impl VideoSurface {
                     rect.bottom - rect.top,
                     SWP_NOACTIVATE,
                 );
-                SetWindowSubclass(parent_hwnd, parent_subclass_proc, SUBCLASS_ID, child as usize);
+                SetWindowSubclass(
+                    parent_hwnd,
+                    parent_subclass_proc,
+                    SUBCLASS_ID,
+                    child as usize,
+                );
                 child
             };
 

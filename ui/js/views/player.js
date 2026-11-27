@@ -306,6 +306,9 @@ export function playerKey(event) {
     },
     m: toggleMute,
     f: toggleFullscreen,
+    ...(event.target === s.ui.el || event.target.classList.contains('player-surface')
+      ? { Enter: toggleFullscreen }
+      : {}),
     s: () => cycleTrack(s, 'subtitles'),
     a: () => cycleTrack(s, 'audio'),
     n: () => playNext(s),
