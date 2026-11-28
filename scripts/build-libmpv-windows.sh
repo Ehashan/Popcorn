@@ -68,7 +68,7 @@ fi
 rm -rf "$TOOLS" "$PREFIX" "$SRC"
 mkdir -p "$DOWNLOADS" "$SRC" "$PREFIX/lib/pkgconfig" "$PREFIX/include" "$TOOLS" "$OUT_DIR"
 
-for tool in gcc g++ meson ninja pkgconf nasm curl tar strip objdump; do
+for tool in gcc g++ meson ninja pkgconf nasm make cmp curl tar strip objdump; do
   command -v "$tool" >/dev/null || die "$tool not found in MINGW64 PATH"
 done
 
@@ -86,7 +86,7 @@ export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:/mingw64/lib/pkgconfig"
 export CC=gcc CXX=g++
 export SOURCE_DATE_EPOCH=0 LC_ALL=C
 
-COMMON_FLAGS="-O2 -ffunction-sections -fdata-sections -ffile-prefix-map=$BUILD=."
+COMMON_FLAGS="-Os -ffunction-sections -fdata-sections -ffile-prefix-map=$BUILD=."
 STATIC_LDFLAGS="-L$PREFIX/lib -static-libgcc -static-libstdc++ -Wl,--gc-sections"
 export CFLAGS="$COMMON_FLAGS -I$PREFIX/include"
 export CXXFLAGS="$COMMON_FLAGS -I$PREFIX/include"
@@ -157,7 +157,7 @@ meson_dep() {
   shift
   log "Building $name"
   meson setup "$SRC/$name/_build" "$SRC/$name" \
-    --prefix="$PREFIX" --libdir=lib --buildtype=release \
+    --prefix="$PREFIX" --libdir=lib --buildtype=minsize \
     --default-library=static --wrap-mode=nodownload --auto-features=disabled \
     -Db_ndebug=true "$@"
   ninja -C "$SRC/$name/_build" -j "$JOBS"
@@ -201,7 +201,7 @@ log "Building ffmpeg"
     --arch=x86_64 --target-os=mingw32 --cc=gcc --cxx=g++ \
     --pkg-config="$PKG_CONFIG" --pkg-config-flags=--static \
     --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS" \
-    --enable-static --disable-shared \
+    --enable-static --disable-shared --enable-small \
     --disable-autodetect --disable-everything \
     --disable-programs --disable-doc --disable-network --disable-debug \
     --disable-avdevice \
@@ -223,7 +223,7 @@ log "Building ffmpeg"
 # ---------------------------------------------------------------------------
 log "Building mpv"
 meson setup "$SRC/mpv/_build" "$SRC/mpv" \
-  --prefix="$PREFIX" --libdir=lib --bindir=bin --buildtype=release \
+  --prefix="$PREFIX" --libdir=lib --bindir=bin --buildtype=minsize \
   --default-library=shared --wrap-mode=nodownload --auto-features=disabled \
   -Db_ndebug=true \
   -Dc_link_args="$STATIC_LDFLAGS" \
