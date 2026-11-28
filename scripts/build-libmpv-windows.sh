@@ -232,7 +232,7 @@ meson setup "$SRC/mpv/_build" "$SRC/mpv" \
   -Dlua=disabled -Djavascript=disabled -Dcplugins=disabled -Dvulkan=disabled \
   -Dlibavdevice=disabled -Dlibcurl=disabled \
   -Dgl=enabled -Dplain-gl=enabled -Dgl-win32=enabled \
-  -Dd3d-hwaccel=enabled -Dwasapi=enabled \
+  -Dd3d-hwaccel=enabled -Dwasapi=enabled -Dwin32-threads=enabled \
   -Diconv=enabled -Dzlib=enabled
 ninja -C "$SRC/mpv/_build" -j "$JOBS"
 meson install -C "$SRC/mpv/_build" --no-rebuild >/dev/null
